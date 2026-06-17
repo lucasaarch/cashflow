@@ -7,7 +7,7 @@ struct TransactionKindSwitcher: View {
     var body: some View {
         HStack(spacing: 0) {
             pill(for: .expense, label: "Despesa", icon: "arrow.up.right", tint: CFTheme.expense)
-            pill(for: .income, label: "Receita", icon: "arrow.down.left", tint: CFTheme.income)
+            pill(for: .income, label: "Receita", icon: "arrow.down.left", tint: CFTheme.accent)
         }
         .padding(3)
         .background(

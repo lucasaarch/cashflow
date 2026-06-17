@@ -11,6 +11,7 @@ import SwiftData
 @main
 struct CashFlowApp: App {
     @StateObject private var aiService = AIService()
+    @StateObject private var chatPanelState = AIChatPanelState()
 
     var sharedModelContainer: ModelContainer = {
         DataReset.wipeStoreIfNeeded()
@@ -18,7 +19,9 @@ struct CashFlowApp: App {
         let schema = Schema([
             Transaction.self,
             Category.self,
-            Account.self
+            Account.self,
+            ChatConversation.self,
+            ChatMessage.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -33,6 +36,7 @@ struct CashFlowApp: App {
         WindowGroup {
             RootSidebarView()
                 .environmentObject(aiService)
+                .environmentObject(chatPanelState)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .modelContainer(sharedModelContainer)

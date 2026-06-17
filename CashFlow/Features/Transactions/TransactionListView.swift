@@ -116,11 +116,11 @@ struct TransactionListView: View {
         HStack {
             Text(dayHeader(day))
                 .font(CFTheme.headline())
-                .foregroundStyle(isRecentDay(day) ? CFTheme.brandGreen : CFTheme.textPrimary)
+                .foregroundStyle(isRecentDay(day) ? CFTheme.accent : CFTheme.textPrimary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(
-                    Capsule().fill(isRecentDay(day) ? CFTheme.brandGreen.opacity(0.12) : .clear)
+                    Capsule().fill(isRecentDay(day) ? CFTheme.accent.opacity(0.12) : .clear)
                 )
             Spacer()
             Text(total.brl)

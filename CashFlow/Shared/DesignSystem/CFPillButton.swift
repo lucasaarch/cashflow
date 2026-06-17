@@ -3,8 +3,9 @@ import SwiftUI
 enum CFPillStyle { case primary, ghost, destructive }
 
 struct CFPillButton: View {
-    let title: String
+    var title: String = ""
     var icon: String? = nil
+    var iconOnly: Bool = false
     var style: CFPillStyle = .primary
     let action: () -> Void
 
@@ -12,15 +13,26 @@ struct CFPillButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                if let icon {
+            Group {
+                if iconOnly, let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
+                } else {
+                    HStack(spacing: 6) {
+                        if let icon {
+                            Image(systemName: icon)
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        if !title.isEmpty {
+                            Text(title)
+                                .font(.system(size: 13, weight: .medium))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                    }
                 }
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, iconOnly ? 10 : 14)
             .padding(.vertical, 7)
             .background(background)
             .foregroundStyle(foreground)
@@ -36,7 +48,7 @@ struct CFPillButton: View {
     private var background: some View {
         switch style {
         case .primary:
-            Capsule().fill(CFTheme.brandGreen)
+            Capsule().fill(CFTheme.accent)
         case .ghost:
             Capsule().fill(CFTheme.textTertiary.opacity(isHovered ? 0.15 : 0.08))
         case .destructive:

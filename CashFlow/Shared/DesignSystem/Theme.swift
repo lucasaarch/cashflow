@@ -1,7 +1,17 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum CFTheme {
-    static let brandGreen = Color("BrandGreen")
+    /// User's macOS accent (System Settings → Appearance).
+    static var accent: Color {
+#if os(macOS)
+        Color(nsColor: NSColor.controlAccentColor)
+#else
+        Color.accentColor
+#endif
+    }
     static let surfacePrimary = Color("SurfacePrimary")
     static let surfaceSecondary = Color("SurfaceSecondary")
     static let surfaceElevated = Color("SurfaceElevated")
@@ -58,5 +68,54 @@ struct CFPageBackgroundModifier: ViewModifier {
 extension View {
     func cfPageBackground() -> some View {
         modifier(CFPageBackgroundModifier())
+    }
+
+    /// Solid neutral background for sheets — avoids green tint from `.ultraThinMaterial` vibrancy.
+    func cfSheetBackground() -> some View {
+        presentationBackground(CFTheme.surfacePrimary)
+    }
+
+    /// Compact chip styling for inline pickers (category, date, icon).
+    func cfPickerChip() -> some View {
+        font(CFTheme.body())
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(CFTheme.surfaceSecondary.opacity(0.8))
+            )
+    }
+
+    /// Neutral field background + visible border, accent when focused.
+    func cfFieldChrome(isFocused: Bool) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(CFTheme.surfaceElevated.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(
+                    isFocused ? CFTheme.accent : CFTheme.textTertiary.opacity(0.28),
+                    lineWidth: isFocused ? 1.5 : 1
+                )
+        )
+        .animation(CFMotion.snappy, value: isFocused)
+    }
+
+    /// Chip-sized field chrome for inline rows (matches `cfPickerChip` dimensions).
+    func cfCompactFieldChrome(isFocused: Bool) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(CFTheme.surfaceSecondary.opacity(0.8))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(
+                    isFocused ? CFTheme.accent : CFTheme.textTertiary.opacity(0.28),
+                    lineWidth: isFocused ? 1.5 : 1
+                )
+        )
+        .animation(CFMotion.snappy, value: isFocused)
     }
 }

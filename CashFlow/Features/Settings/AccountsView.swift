@@ -212,6 +212,7 @@ private struct AccountSheet: View {
     @State private var color: Color
     @State private var openingBalance: Decimal
     @State private var openingDate: Date
+    @FocusState private var balanceFocused: Bool
 
     init(editing: Account? = nil) {
         self.editing = editing
@@ -219,7 +220,7 @@ private struct AccountSheet: View {
         let initialKind = editing?.kind ?? .bank
         _kind = State(initialValue: initialKind)
         _symbolName = State(initialValue: editing?.symbolName ?? initialKind.defaultSymbolName)
-        _color = State(initialValue: editing.map { Color(hex: $0.colorHex) } ?? .blue)
+        _color = State(initialValue: editing.map { Color(hex: $0.colorHex) } ?? Color(hex: "#3B82F6"))
         // For credit cards, the stored balance is negative (debt). Show it as a
         // positive number in the editor so the user types what they intuitively owe.
         let rawBalance = editing?.openingBalance ?? 0
@@ -235,14 +236,6 @@ private struct AccountSheet: View {
         kind == .creditCard ? "Cartão Inter, Cartão Giovanna…" : "Banco Inter, Carteira…"
     }
 
-    private var balanceSectionTitle: String {
-        kind == .creditCard ? "Fatura inicial" : "Saldo de partida"
-    }
-
-    private var balanceFieldLabel: String {
-        kind == .creditCard ? "Já devo" : "Saldo"
-    }
-
     private var balanceHint: String {
         switch kind {
         case .bank:
@@ -254,54 +247,29 @@ private struct AccountSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            hero
+            CFAmountHeader(
+                title: "Saldo Inicial",
+                amount: $openingBalance,
+                amountFocus: $balanceFocused
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
             Divider()
             formContent
             Divider()
             footer
         }
-        .frame(width: 500, height: 620)
+        .frame(width: 500, height: 490)
+        .onAppear { balanceFocused = true }
         .onChange(of: kind) { oldValue, newValue in
             // If user hasn't picked a custom icon, swap the default to match the new kind.
             if !isEditing, symbolName == oldValue.defaultSymbolName {
                 symbolName = newValue.defaultSymbolName
             }
         }
-        .presentationBackground(.ultraThinMaterial)
-    }
-
-    private var hero: some View {
-        VStack(spacing: 10) {
-            CFIconBadge(
-                symbolName: symbolName.isEmpty ? kind.defaultSymbolName : symbolName,
-                tint: color,
-                size: 64
-            )
-            .shadow(color: color.opacity(0.18), radius: 12, x: 0, y: 6)
-
-            VStack(spacing: 3) {
-                Text(name.isEmpty ? (isEditing ? "Sem nome" : "Nova conta") : name)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(name.isEmpty ? CFTheme.textSecondary : CFTheme.textPrimary)
-                    .lineLimit(1)
-                Text(heroSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(CFTheme.textSecondary)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.top, 26)
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var heroSubtitle: String {
-        let kindLabel = kind.displayName
-        if openingBalance == 0 {
-            return kind == .creditCard ? "\(kindLabel) · fatura zerada" : "\(kindLabel) · sem saldo"
-        }
-        let amount = openingBalance.brl
-        return kind == .creditCard ? "\(kindLabel) · devo \(amount)" : "\(kindLabel) · \(amount)"
+        .cfSheetBackground()
+        .tint(CFTheme.accent)
     }
 
     private var formContent: some View {
@@ -311,13 +279,11 @@ private struct AccountSheet: View {
                     CFInputField(label: "Nome", text: $name, placeholder: namePlaceholder)
 
                     labeledRow("Tipo") {
-                        Picker("Tipo", selection: $kind) {
-                            ForEach(AccountKind.allCases, id: \.self) { kind in
-                                Text(kind.displayName).tag(kind)
-                            }
-                        }
-                        .labelsHidden()
-                        .disabled(hasUsage)
+                        CFSelectField(
+                            selection: $kind,
+                            options: AccountKind.selectOptions,
+                            disabled: hasUsage
+                        )
                     }
                 }
 
@@ -327,12 +293,7 @@ private struct AccountSheet: View {
                         .foregroundStyle(CFTheme.textSecondary)
                 }
 
-                section(title: balanceSectionTitle) {
-                    labeledRow(balanceFieldLabel) {
-                        CurrencyField(amount: $openingBalance, placeholder: "R$ 0,00")
-                            .multilineTextAlignment(.trailing)
-                            .frame(maxWidth: 180)
-                    }
+                section(title: "Referência") {
                     labeledRow("Desde") {
                         DateField(date: $openingDate)
                     }
@@ -346,12 +307,14 @@ private struct AccountSheet: View {
                     labeledRow("Ícone") {
                         IconPickerField(symbolName: $symbolName, tint: color)
                     }
-                    ColorPicker("Cor", selection: $color, supportsOpacity: false)
-                        .foregroundStyle(CFTheme.textPrimary)
+                    labeledRow("Cor") {
+                        ColorPickerField(color: $color)
+                    }
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -392,7 +355,7 @@ private struct AccountSheet: View {
             Spacer()
             CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", icon: "checkmark", style: .primary) {
+            CFPillButton(title: "Salvar", style: .primary) {
                 save()
                 dismiss()
             }

@@ -4,7 +4,7 @@ struct CFMetricTile: View {
     let label: String
     let amount: Decimal
     let icon: String
-    var tint: Color = CFTheme.brandGreen
+    var tint: Color = CFTheme.accent
 
     var body: some View {
         HStack(spacing: 10) {

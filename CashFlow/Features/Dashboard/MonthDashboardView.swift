@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 
 struct MonthDashboardView: View {
+    @EnvironmentObject private var aiService: AIService
+
     @Query(sort: [SortDescriptor(\Transaction.occurredOn, order: .reverse)])
     private var transactions: [Transaction]
 
@@ -12,6 +14,9 @@ struct MonthDashboardView: View {
     @AppStorage(UserDefaultsKeys.monthlyIncomeCents) private var monthlyIncomeCents: Int = 0
     @State private var referenceDate: Date = .now
     @State private var editingIncome = false
+    @State private var insightText: String?
+    @State private var insightLoading = false
+    @State private var insightError: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: MonthSummary {
@@ -74,6 +79,11 @@ struct MonthDashboardView: View {
                 .cfStaggerAppear(index: 0)
                 .id(referenceDate)
 
+                if aiService.configuration.isReady {
+                    insightCard
+                        .cfStaggerAppear(index: 1)
+                }
+
                 if monthlyIncomeCents > 0 {
                     ViewThatFits {
                         HStack(alignment: .top, spacing: 16) {
@@ -115,6 +125,78 @@ struct MonthDashboardView: View {
             .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
         }
         .cfPageBackground()
+        .onAppear(perform: loadCachedInsight)
+        .onChange(of: referenceDate) { _, _ in loadCachedInsight() }
+    }
+
+    private var insightCard: some View {
+        CFGlassCard(title: "Resumo inteligente") {
+            VStack(alignment: .leading, spacing: 10) {
+                if let insightText {
+                    Text(insightText)
+                        .font(CFTheme.body())
+                        .foregroundStyle(CFTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Spacer()
+                        CFPillButton(title: "Atualizar", style: .ghost) {
+                            Task { await generateInsight(force: true) }
+                        }
+                    }
+                } else if insightLoading {
+                    ProgressView("Gerando resumo…")
+                        .controlSize(.small)
+                } else {
+                    CFPillButton(title: "Gerar resumo", style: .primary) {
+                        Task { await generateInsight(force: false) }
+                    }
+                }
+                if let insightError {
+                    Text(insightError)
+                        .font(CFTheme.caption())
+                        .foregroundStyle(CFTheme.expense)
+                }
+            }
+        }
+    }
+
+    private var monthKey: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: referenceDate)
+    }
+
+    private func loadCachedInsight() {
+        insightText = AIInsightsService.cachedInsight(monthKey: monthKey)
+        insightError = nil
+    }
+
+    private func generateInsight(force: Bool) async {
+        if !force, insightText != nil { return }
+        insightLoading = true
+        insightError = nil
+        defer { insightLoading = false }
+
+        let calendar = Calendar.current
+        let previousMonth = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
+        let previousSummary = MonthSummary(
+            referenceDate: previousMonth,
+            monthlyIncomeBudget: Decimal(monthlyIncomeCents) / 100,
+            transactions: transactions
+        )
+
+        do {
+            let text = try await AIInsightsService.generateInsight(
+                summary: summary,
+                transactions: summary.monthlyTransactions,
+                previousMonthExpense: previousSummary.totalExpense,
+                aiService: aiService
+            )
+            insightText = text
+            AIInsightsService.cacheInsight(text, monthKey: monthKey)
+        } catch {
+            insightError = error.localizedDescription
+        }
     }
 
     private var monthNavigator: some View {
@@ -247,9 +329,8 @@ private struct MonthlyIncomeEditor: View {
             Text("O CashFlow compara com o que você já gastou e mostra o card de Ritmo, indicando se vai sobrar dinheiro até o fim do mês ou se está gastando rápido demais.")
                 .font(.caption)
                 .foregroundStyle(CFTheme.textSecondary)
-            CurrencyField(amount: $amount, placeholder: "R$ 0,00")
+            CurrencyField(amount: $amount, placeholder: "R$ 0,00", style: .form)
                 .font(.title3)
-                .textFieldStyle(.roundedBorder)
             if cents > 0 {
                 Button(role: .destructive) {
                     amount = 0

@@ -17,16 +17,8 @@ struct CFInputField: View {
                 .font(CFTheme.body())
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(CFTheme.surfaceElevated.opacity(0.5))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(isFocused ? CFTheme.brandGreen : CFTheme.textTertiary.opacity(0.2), lineWidth: isFocused ? 1.5 : 0.5)
-                )
                 .focused($isFocused)
-                .animation(CFMotion.snappy, value: isFocused)
+                .cfFieldChrome(isFocused: isFocused)
         }
     }
 }

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CFProgressBar: View {
     let progress: Double // 0...1 for display width
-    var color: Color = CFTheme.brandGreen
+    var color: Color = CFTheme.accent
     var height: CGFloat = 8
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

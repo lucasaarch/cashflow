@@ -174,43 +174,18 @@ private struct CategorySheet: View {
     private var hasUsage: Bool { (editing?.transactions.count ?? 0) > 0 }
 
     private var accentColor: Color {
-        kind == .expense ? CFTheme.expense : CFTheme.income
+        kind == .expense ? CFTheme.expense : CFTheme.accent
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            hero
-            Divider()
             formContent
             Divider()
             footer
         }
-        .frame(width: 480, height: 460)
-        .presentationBackground(.ultraThinMaterial)
-    }
-
-    private var hero: some View {
-        VStack(spacing: 10) {
-            CFIconBadge(
-                symbolName: symbolName.isEmpty ? "tag.fill" : symbolName,
-                tint: accentColor,
-                size: 64
-            )
-            .shadow(color: accentColor.opacity(0.18), radius: 12, x: 0, y: 6)
-
-            VStack(spacing: 3) {
-                Text(name.isEmpty ? (isEditing ? "Sem nome" : "Nova categoria") : name)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(name.isEmpty ? CFTheme.textSecondary : CFTheme.textPrimary)
-                    .lineLimit(1)
-                Text(kind == .expense ? "Despesa" : "Receita")
-                    .font(.subheadline)
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-        }
-        .padding(.top, 26)
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity)
+        .frame(width: 480, height: 350)
+        .cfSheetBackground()
+        .tint(CFTheme.accent)
     }
 
     private var formContent: some View {
@@ -224,13 +199,11 @@ private struct CategorySheet: View {
                     )
 
                     labeledRow("Tipo") {
-                        Picker("Tipo", selection: $kind) {
-                            Text("Despesa").tag(CategoryKind.expense)
-                            Text("Receita").tag(CategoryKind.income)
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .disabled(hasUsage)
+                        CFSelectField(
+                            selection: $kind,
+                            options: CategoryKind.selectOptions,
+                            disabled: hasUsage
+                        )
                     }
                 }
 
@@ -247,7 +220,8 @@ private struct CategorySheet: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -288,7 +262,7 @@ private struct CategorySheet: View {
             Spacer()
             CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", icon: "checkmark", style: .primary) {
+            CFPillButton(title: "Salvar", style: .primary) {
                 save()
                 dismiss()
             }

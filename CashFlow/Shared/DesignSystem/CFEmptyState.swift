@@ -14,7 +14,7 @@ struct CFEmptyState: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [CFTheme.brandGreen, CFTheme.brandGreen.opacity(0.5)],
+                        colors: [CFTheme.accent, CFTheme.accent.opacity(0.5)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

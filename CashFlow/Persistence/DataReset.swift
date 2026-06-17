@@ -3,7 +3,7 @@ import Foundation
 enum DataReset {
     /// Bump this token whenever you need to force-wipe local data on next launch.
     /// Each unique token runs exactly once.
-    private static let wipeToken = "fresh_start_2026_06_16"
+    private static let wipeToken = "fresh_start_2026_06_17_ai"
     private static let lastAppliedKey = "lastAppliedWipeToken"
 
     /// Must run BEFORE creating the ModelContainer — deletes the SwiftData store files

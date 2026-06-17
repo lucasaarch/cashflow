@@ -38,7 +38,7 @@ struct CFGlassCard<Content: View>: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                        .fill(CFTheme.brandGreen.opacity(0.04))
+                        .fill(CFTheme.accent.opacity(0.04))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)

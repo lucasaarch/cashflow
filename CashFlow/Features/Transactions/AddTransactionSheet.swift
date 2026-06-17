@@ -4,6 +4,7 @@ import SwiftData
 struct AddTransactionSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var aiService: AIService
 
     @Query(filter: #Predicate<Category> { !$0.isArchived },
            sort: [SortDescriptor(\Category.sortOrder)])
@@ -17,6 +18,9 @@ struct AddTransactionSheet: View {
 
     @State private var draft: TransactionDraft
     @State private var showingNote: Bool
+    @State private var naturalLanguageInput = ""
+    @State private var isParsingNL = false
+    @State private var categorySuggestion: Category?
     @FocusState private var amountFocused: Bool
     @Namespace private var switcherNamespace
 
@@ -49,23 +53,20 @@ struct AddTransactionSheet: View {
         }
         .frame(width: 440, height: showingNote ? 500 : 440)
         .onAppear(perform: prefillDefaults)
-        .presentationBackground(.ultraThinMaterial)
+        .cfSheetBackground()
+        .tint(CFTheme.accent)
     }
 
     // MARK: - Header
 
     private var header: some View {
         VStack(spacing: 12) {
-            Text(isEditing ? "Editar lançamento" : "Novo lançamento")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(CFTheme.textSecondary)
-
-            CurrencyField(amount: $draft.amount, placeholder: "R$ 0,00")
-                .font(.system(size: 42, weight: .semibold, design: .rounded))
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.plain)
-                .focused($amountFocused)
-                .foregroundStyle(amountColor)
+            CFAmountHeader(
+                title: "Valor do lançamento",
+                amount: $draft.amount,
+                amountColor: amountColor,
+                amountFocus: $amountFocused
+            )
 
             TransactionKindSwitcher(kind: $draft.kind, namespace: switcherNamespace)
                 .frame(maxWidth: 260)
@@ -74,7 +75,26 @@ struct AddTransactionSheet: View {
                        current.kind != (draft.kind == .income ? .income : .expense) {
                         draft.category = nil
                     }
+                    categorySuggestion = nil
                 }
+
+            if aiService.configuration.isReady {
+                HStack(spacing: 8) {
+                    TextField("Ex: gastei 45 no mercado ontem", text: $naturalLanguageInput)
+                        .textFieldStyle(.plain)
+                        .font(CFTheme.body())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .cfFieldChrome(isFocused: false)
+                    Button {
+                        Task { await applyNaturalLanguage() }
+                    } label: {
+                        Image(systemName: isParsingNL ? "hourglass" : "wand.and.stars")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(naturalLanguageInput.trimmingCharacters(in: .whitespaces).isEmpty || isParsingNL)
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -83,7 +103,7 @@ struct AddTransactionSheet: View {
     }
 
     private var amountColor: Color {
-        draft.kind == .expense ? CFTheme.textPrimary : CFTheme.income
+        draft.kind == .expense ? CFTheme.textPrimary : CFTheme.accent
     }
 
     // MARK: - Form
@@ -93,7 +113,24 @@ struct AddTransactionSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 fieldSection(title: "Detalhes") {
                     labeledRow("Categoria") {
-                        categoryPicker
+                        VStack(alignment: .trailing, spacing: 6) {
+                            categoryPicker
+                            if draft.category == nil, draft.amount > 0, aiService.configuration.isReady {
+                                Button("Sugerir categoria") {
+                                    Task { await suggestCategory() }
+                                }
+                                .buttonStyle(.borderless)
+                                .font(CFTheme.caption())
+                            }
+                            if let categorySuggestion, draft.category == nil {
+                                Button("Usar \(categorySuggestion.name)") {
+                                    draft.category = categorySuggestion
+                                    self.categorySuggestion = nil
+                                }
+                                .buttonStyle(.borderless)
+                                .font(CFTheme.caption())
+                            }
+                        }
                     }
                     labeledRow("Conta") {
                         accountPicker
@@ -153,89 +190,51 @@ struct AddTransactionSheet: View {
     }
 
     @ViewBuilder
-    private var categorySelectionLabel: some View {
-        HStack(spacing: 6) {
-            if let category = draft.category {
-                Image(systemName: category.symbolName)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(draft.kind == .expense ? CFTheme.expense : CFTheme.income)
-                Text(category.name)
-                    .foregroundStyle(CFTheme.textPrimary)
-            } else {
-                Text("Selecionar")
-                    .foregroundStyle(CFTheme.textSecondary)
+    private var categoryPicker: some View {
+        CFSelectFieldOptional(
+            selection: categorySelectionID,
+            options: filteredCategories.map { category in
+                CFSelectOption(
+                    id: category.id,
+                    title: category.name,
+                    symbolName: category.symbolName,
+                    tint: draft.kind == .expense ? CFTheme.expense : CFTheme.accent
+                )
             }
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.caption2)
-                .foregroundStyle(CFTheme.textTertiary)
-        }
+        )
     }
 
     @ViewBuilder
-    private var accountSelectionLabel: some View {
-        HStack(spacing: 6) {
-            if let account = draft.account {
-                Image(systemName: account.symbolName)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Color(hex: account.colorHex))
-                Text(account.name)
-                    .foregroundStyle(CFTheme.textPrimary)
-            } else {
-                Text("Selecionar")
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.caption2)
-                .foregroundStyle(CFTheme.textTertiary)
-        }
-    }
-
-    private func pickerLabel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .font(CFTheme.body())
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(CFTheme.surfaceSecondary.opacity(0.8))
-            )
-    }
-
-    // MARK: - Pickers
-
-    private var categoryPicker: some View {
-        Menu {
-            ForEach(filteredCategories) { category in
-                Button {
-                    draft.category = category
-                } label: {
-                    Label(category.name, systemImage: category.symbolName)
-                }
-            }
-        } label: {
-            pickerLabel {
-                categorySelectionLabel
-            }
-        }
-        .menuStyle(.borderlessButton)
-    }
-
     private var accountPicker: some View {
-        Menu {
-            ForEach(accounts) { account in
-                Button {
-                    draft.account = account
-                } label: {
-                    Label(account.name, systemImage: account.symbolName)
-                }
+        CFSelectFieldOptional(
+            selection: accountSelectionID,
+            options: accounts.map { account in
+                CFSelectOption(
+                    id: account.id,
+                    title: account.name,
+                    symbolName: account.symbolName,
+                    tint: Color(hex: account.colorHex)
+                )
             }
-        } label: {
-            pickerLabel {
-                accountSelectionLabel
+        )
+    }
+
+    private var categorySelectionID: Binding<UUID?> {
+        Binding(
+            get: { draft.category?.id },
+            set: { newID in
+                draft.category = filteredCategories.first { $0.id == newID }
             }
-        }
-        .menuStyle(.borderlessButton)
+        )
+    }
+
+    private var accountSelectionID: Binding<UUID?> {
+        Binding(
+            get: { draft.account?.id },
+            set: { newID in
+                draft.account = accounts.first { $0.id == newID }
+            }
+        )
     }
 
     // MARK: - Footer
@@ -245,6 +244,7 @@ struct AddTransactionSheet: View {
             CFPillButton(
                 title: showingNote ? "Ocultar nota" : "Adicionar nota",
                 icon: showingNote ? "text.bubble.fill" : "text.bubble",
+                iconOnly: true,
                 style: .ghost
             ) {
                 withAnimation(CFMotion.snappy) {
@@ -254,14 +254,14 @@ struct AddTransactionSheet: View {
             .help(showingNote ? "Ocultar nota" : "Adicionar nota")
 
             if showingNote {
-                CFPillButton(title: "Limpar", icon: "xmark.circle", style: .ghost) {
+                CFPillButton(title: "Limpar nota", icon: "xmark.circle", iconOnly: true, style: .ghost) {
                     draft.note = ""
                 }
                 .help("Limpar nota")
             }
 
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", style: .destructive) {
+                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
                     deleteEditing()
                 }
                 .help("Excluir lançamento")
@@ -274,15 +274,7 @@ struct AddTransactionSheet: View {
             }
             .keyboardShortcut(.cancelAction)
 
-            if !isEditing {
-                CFPillButton(title: "Salvar e adicionar", icon: "plus", style: .ghost) {
-                    save(closeAfter: false)
-                }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
-                .sheetButtonDisabled(!draft.isValid)
-            }
-
-            CFPillButton(title: "Salvar", icon: "checkmark", style: .primary) {
+            CFPillButton(title: "Salvar", style: .primary) {
                 save(closeAfter: true)
             }
             .keyboardShortcut(.defaultAction)
@@ -360,6 +352,57 @@ struct AddTransactionSheet: View {
             modelContext.delete(editing)
         }
         dismiss()
+    }
+
+    private func applyNaturalLanguage() async {
+        guard aiService.configuration.isReady else { return }
+        isParsingNL = true
+        defer { isParsingNL = false }
+        do {
+            let parsed = try await AICategorizeService.parseTransaction(
+                text: naturalLanguageInput,
+                aiService: aiService
+            )
+            if let amount = parsed.amount { draft.amount = amount }
+            if let kind = parsed.kind { draft.kind = kind }
+            if let date = parsed.date { draft.occurredOn = date }
+            if let note = parsed.note { draft.note = note; showingNote = true }
+            if let categoryName = parsed.categoryName {
+                draft.category = filteredCategories.first {
+                    $0.name.localizedCaseInsensitiveContains(categoryName)
+                }
+            }
+            if let accountName = parsed.accountName {
+                draft.account = accounts.first {
+                    $0.name.localizedCaseInsensitiveContains(accountName)
+                }
+            }
+            naturalLanguageInput = ""
+        } catch {
+            // Silent fail — user can still fill manually
+        }
+    }
+
+    private func suggestCategory() async {
+        guard aiService.configuration.isReady else { return }
+        do {
+            let suggestion = try await AICategorizeService.suggestCategory(
+                amount: draft.amount,
+                kind: draft.kind,
+                note: draft.note,
+                categories: categories,
+                aiService: aiService
+            )
+            guard let uuid = UUID(uuidString: suggestion.categoryId),
+                  let category = filteredCategories.first(where: { $0.id == uuid }) else { return }
+            if suggestion.confidence >= 0.8 {
+                draft.category = category
+            } else {
+                categorySuggestion = category
+            }
+        } catch {
+            categorySuggestion = nil
+        }
     }
 }
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct IconPickerField: View {
     @Binding var symbolName: String
-    var tint: Color = CFTheme.brandGreen
+    var tint: Color = CFTheme.accent
 
     @State private var showingPicker = false
 
@@ -10,30 +10,18 @@ struct IconPickerField: View {
         Button {
             showingPicker = true
         } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(tint.opacity(0.16))
-                        .frame(width: 30, height: 30)
-                    Image(systemName: symbolName.isEmpty ? "questionmark.square.dashed" : symbolName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(tint)
-                }
+            HStack(spacing: 6) {
+                Image(systemName: symbolName.isEmpty ? "questionmark.square.dashed" : symbolName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(tint)
                 Text(displayName)
-                    .font(CFTheme.body())
                     .foregroundStyle(CFTheme.textPrimary)
-                    .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)
-                    .foregroundStyle(CFTheme.textSecondary)
+                    .foregroundStyle(CFTheme.textTertiary)
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(CFTheme.surfaceElevated.opacity(0.42))
-            )
+            .cfPickerChip()
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showingPicker, arrowEdge: .top) {

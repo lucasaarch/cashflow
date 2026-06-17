@@ -9,6 +9,9 @@ enum SidebarDestination: Hashable {
 }
 
 struct RootSidebarView: View {
+    @EnvironmentObject private var aiService: AIService
+    @EnvironmentObject private var chatPanelState: AIChatPanelState
+
     @State private var selection: SidebarDestination? = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -42,7 +45,27 @@ struct RootSidebarView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
             .toolbar(removing: .sidebarToggle)
         } detail: {
-            detailView
+            ZStack(alignment: .trailing) {
+                detailView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                chatPanelState.toggle()
+                            } label: {
+                                Label("Saúde financeira", systemImage: "sparkles")
+                            }
+                            .help("Abrir chat de saúde financeira")
+                        }
+                    }
+
+                if chatPanelState.isOpen {
+                    AIChatSidePanel(aiService: aiService)
+                        .transition(.move(edge: .trailing))
+                        .shadow(color: .black.opacity(0.2), radius: 16, x: -4, y: 0)
+                }
+            }
+            .animation(CFMotion.snappy, value: chatPanelState.isOpen)
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: columnVisibility) { _, newValue in
