@@ -14,6 +14,7 @@ struct TransactionListView: View {
     private var categories: [Category]
 
     @State private var showingAdd = false
+    @State private var editingTransaction: Transaction?
 
     private var canAddTransaction: Bool {
         !accounts.isEmpty && !categories.isEmpty
@@ -42,69 +43,96 @@ struct TransactionListView: View {
         .sheet(isPresented: $showingAdd) {
             AddTransactionSheet()
         }
+        .sheet(item: $editingTransaction) { transaction in
+            AddTransactionSheet(editing: transaction)
+        }
     }
 
     @ViewBuilder
     private var emptyState: some View {
         if accounts.isEmpty {
-            ContentUnavailableView {
-                Label("Cadastre uma conta primeiro", systemImage: "wallet.pass")
-            } description: {
-                Text("Você precisa de pelo menos uma conta com saldo de partida antes de registrar movimentações.")
-            }
+            CFEmptyState(
+                symbol: "wallet.pass",
+                title: "Cadastre uma conta primeiro",
+                message: "Você precisa de pelo menos uma conta com saldo de partida antes de registrar movimentações."
+            )
         } else if categories.isEmpty {
-            ContentUnavailableView {
-                Label("Crie ao menos uma categoria", systemImage: "tag")
-            } description: {
-                Text("Cadastre categorias para classificar seus gastos e receitas.")
-            }
+            CFEmptyState(
+                symbol: "tag",
+                title: "Crie ao menos uma categoria",
+                message: "Cadastre categorias para classificar seus gastos e receitas."
+            )
         } else {
-            ContentUnavailableView {
-                Label("Nenhum lançamento", systemImage: "list.bullet.rectangle")
-            } description: {
-                Text("Comece registrando seu primeiro gasto ou receita.")
-            } actions: {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Novo lançamento", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+            CFEmptyState(
+                symbol: "list.bullet.rectangle",
+                title: "Nenhum lançamento",
+                message: "Comece registrando seu primeiro gasto ou receita.",
+                actionTitle: "Novo lançamento"
+            ) {
+                showingAdd = true
             }
         }
     }
 
     private var list: some View {
-        List {
-            ForEach(groupedByDay, id: \.0) { day, items in
-                Section {
-                    ForEach(items) { transaction in
-                        TransactionRow(transaction: transaction)
-                            .listRowSeparatorTint(.secondary.opacity(0.15))
+        ScrollView {
+            LazyVStack(spacing: 4, pinnedViews: [.sectionHeaders]) {
+                ForEach(groupedByDay, id: \.0) { day, items in
+                    Section {
+                        ForEach(items) { transaction in
+                            CFHoverRow {
+                                TransactionRow(transaction: transaction)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                editingTransaction = transaction
+                            }
+                            .contextMenu {
+                                Button {
+                                    editingTransaction = transaction
+                                } label: {
+                                    Label("Editar", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    modelContext.delete(transaction)
+                                } label: {
+                                    Label("Excluir", systemImage: "trash")
+                                }
+                            }
+                            .padding(.bottom, 2)
+                        }
+                    } header: {
+                        dayHeaderView(for: day, total: dayTotal(items))
                     }
-                    .onDelete { offsets in
-                        delete(from: items, at: offsets)
-                    }
-                } header: {
-                    sectionHeader(for: day, total: dayTotal(items))
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .listStyle(.inset)
+        .cfPageBackground()
     }
 
-    private func sectionHeader(for day: Date, total: Decimal) -> some View {
+    private func dayHeaderView(for day: Date, total: Decimal) -> some View {
         HStack {
             Text(dayHeader(day))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(CFTheme.headline())
+                .foregroundStyle(isRecentDay(day) ? CFTheme.brandGreen : CFTheme.textPrimary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(isRecentDay(day) ? CFTheme.brandGreen.opacity(0.12) : .clear)
+                )
             Spacer()
             Text(total.brl)
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(CFTheme.kpiValue())
+                .foregroundStyle(CFTheme.textSecondary)
         }
-        .textCase(nil)
-        .padding(.vertical, 2)
+        .padding(.vertical, 8)
+        .background(CFTheme.surfacePrimary.opacity(0.95))
+    }
+
+    private func isRecentDay(_ date: Date) -> Bool {
+        Calendar.current.isDateInToday(date) || Calendar.current.isDateInYesterday(date)
     }
 
     private var groupedByDay: [(Date, [Transaction])] {
@@ -128,9 +156,4 @@ struct TransactionListView: View {
             .capitalized
     }
 
-    private func delete(from items: [Transaction], at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(items[index])
-        }
-    }
 }

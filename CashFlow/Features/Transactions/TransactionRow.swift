@@ -5,12 +5,16 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            iconBadge
+            CFIconBadge(
+                symbolName: transaction.category?.symbolName ?? "questionmark.circle",
+                tint: rowTint,
+                size: CFTheme.iconSize
+            )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(transaction.category?.name ?? "Sem categoria")
-                    .font(.body)
-                    .foregroundStyle(.primary)
+                    .font(CFTheme.body())
+                    .foregroundStyle(CFTheme.textPrimary)
 
                 HStack(spacing: 6) {
                     if let account = transaction.account {
@@ -19,15 +23,15 @@ struct TransactionRow: View {
                             .foregroundStyle(Color(hex: account.colorHex))
                         Text(account.name)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(CFTheme.textSecondary)
                     }
                     if !transaction.note.isEmpty {
                         Text("·")
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(CFTheme.textTertiary)
                         Text(transaction.note)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(CFTheme.textSecondary)
                             .lineLimit(1)
                     }
                 }
@@ -36,26 +40,14 @@ struct TransactionRow: View {
             Spacer(minLength: 12)
 
             Text(formattedAmount)
-                .font(.body.monospacedDigit().weight(.medium))
+                .font(CFTheme.body().weight(.medium))
+                .monospacedDigit()
                 .foregroundStyle(amountColor)
         }
-        .padding(.vertical, 6)
     }
 
-    private var iconBadge: some View {
-        ZStack {
-            Circle()
-                .fill(tint.opacity(0.16))
-                .frame(width: 34, height: 34)
-            Image(systemName: transaction.category?.symbolName ?? "questionmark.circle")
-                .font(.system(size: 15, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(tint)
-        }
-    }
-
-    private var tint: Color {
-        transaction.kind == .expense ? .red : .green
+    private var rowTint: Color {
+        transaction.kind == .expense ? CFTheme.expense : CFTheme.income
     }
 
     private var formattedAmount: String {
@@ -64,6 +56,6 @@ struct TransactionRow: View {
     }
 
     private var amountColor: Color {
-        transaction.kind == .expense ? .primary : .green
+        transaction.kind == .expense ? CFTheme.textPrimary : CFTheme.income
     }
 }
