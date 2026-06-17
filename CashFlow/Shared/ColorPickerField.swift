@@ -52,9 +52,8 @@ struct ColorPickerField: View {
             .cfPickerChip()
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $showingPicker, arrowEdge: .top) {
+        .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: "Cor da conta") {
             ColorPickerGrid(color: $color, dismiss: { showingPicker = false })
-                .presentationBackground(CFTheme.surfacePrimary)
         }
     }
 

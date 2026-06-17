@@ -1,6 +1,7 @@
 import Foundation
 
-enum AIProviderID: String, CaseIterable, Codable, Hashable {
+enum AIProviderID: String, CaseIterable, Codable, Hashable, Identifiable {
+    var id: Self { self }
     case openai
     case anthropic
     case ollama

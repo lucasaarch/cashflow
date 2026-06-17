@@ -1,1 +1,14 @@
+# Build artifacts
+build/
+DerivedData/
+
+# Xcode user-specific
+*.xcuserstate
+xcuserdata/
+*.xcbkptlist
+
+# macOS
+.DS_Store
+
+# Agent / editor
 .superpowers/

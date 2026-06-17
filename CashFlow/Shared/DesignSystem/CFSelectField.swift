@@ -28,7 +28,7 @@ struct CFSelectField<ID: Hashable>: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled || options.isEmpty)
-        .popover(isPresented: $showingPicker, arrowEdge: .top) {
+        .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: "Selecionar") {
             popoverContent
         }
     }
@@ -139,7 +139,7 @@ struct CFSelectFieldOptional<ID: Hashable>: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled || options.isEmpty)
-        .popover(isPresented: $showingPicker, arrowEdge: .top) {
+        .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: placeholder) {
             ScrollView {
                 VStack(spacing: 8) {
                     ForEach(options) { option in

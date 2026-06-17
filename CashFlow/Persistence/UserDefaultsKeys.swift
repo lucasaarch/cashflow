@@ -13,4 +13,8 @@ enum UserDefaultsKeys {
     static func aiInsightCacheKey(monthKey: String) -> String {
         "ai.insight.\(monthKey)"
     }
+
+    static func aiInsightCachedAtKey(monthKey: String) -> String {
+        "ai.insight.\(monthKey).cachedAt"
+    }
 }

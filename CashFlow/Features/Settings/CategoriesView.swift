@@ -181,9 +181,16 @@ private struct CategorySheet: View {
         VStack(spacing: 0) {
             formContent
             Divider()
-            footer
+            footer.cfAdaptiveSheetFooterVisible()
         }
-        .frame(width: 480, height: 350)
+        .cfAdaptiveSheetNavigation()
+        .cfAdaptiveSheetFrame(width: 480, height: 350)
+        .cfCompactSheetToolbar(
+            title: isEditing ? "Editar categoria" : "Nova categoria",
+            onCancel: { dismiss() },
+            onSave: { save(); dismiss() }
+        )
+        .cfAdaptiveSheetDetents()
         .cfSheetBackground()
         .tint(CFTheme.accent)
     }
@@ -301,3 +308,15 @@ private struct CategorySheet: View {
         dismiss()
     }
 }
+
+#if DEBUG
+#Preview("Sheet — Nova categoria") {
+    CategorySheet()
+        .previewSheet(width: 440, height: 380)
+}
+
+#Preview("Sheet — Editar categoria") {
+    CategorySheet(editing: PreviewData.marketCategory)
+        .previewSheet(width: 440, height: 380)
+}
+#endif

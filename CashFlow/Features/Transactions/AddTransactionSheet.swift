@@ -4,7 +4,6 @@ import SwiftData
 struct AddTransactionSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var aiService: AIService
 
     @Query(filter: #Predicate<Category> { !$0.isArchived },
            sort: [SortDescriptor(\Category.sortOrder)])
@@ -18,10 +17,8 @@ struct AddTransactionSheet: View {
 
     @State private var draft: TransactionDraft
     @State private var showingNote: Bool
-    @State private var naturalLanguageInput = ""
-    @State private var isParsingNL = false
-    @State private var categorySuggestion: Category?
-    @FocusState private var amountFocused: Bool
+    @State private var installmentCount: Int = 1
+    @State private var confirmingDeletePlan: Bool = false
     @Namespace private var switcherNamespace
 
     private let defaults = UserDefaults.standard
@@ -49,12 +46,28 @@ struct AddTransactionSheet: View {
             Divider()
             formContent
             Divider()
-            footer
+            footer.cfAdaptiveSheetFooterVisible()
         }
-        .frame(width: 440, height: showingNote ? 500 : 440)
+        .cfAdaptiveSheetNavigation()
+        .cfAdaptiveSheetFrame(width: 440, height: sheetHeight)
+        .cfCompactSheetToolbar(
+            title: isEditing ? "Editar lançamento" : "Novo lançamento",
+            saveDisabled: !draft.isValid,
+            onCancel: { dismiss() },
+            onSave: { save(closeAfter: true) }
+        )
+        .cfAdaptiveSheetDetents()
         .onAppear(perform: prefillDefaults)
         .cfSheetBackground()
         .tint(CFTheme.accent)
+    }
+
+    private var sheetHeight: CGFloat {
+        var height: CGFloat = 440
+        if showingNote { height += 60 }
+        if showsInstallmentSection { height += 70 }
+        if editingInstallment != nil { height += 60 }
+        return height
     }
 
     // MARK: - Header
@@ -64,8 +77,7 @@ struct AddTransactionSheet: View {
             CFAmountHeader(
                 title: "Valor do lançamento",
                 amount: $draft.amount,
-                amountColor: amountColor,
-                amountFocus: $amountFocused
+                amountColor: amountColor
             )
 
             TransactionKindSwitcher(kind: $draft.kind, namespace: switcherNamespace)
@@ -75,26 +87,7 @@ struct AddTransactionSheet: View {
                        current.kind != (draft.kind == .income ? .income : .expense) {
                         draft.category = nil
                     }
-                    categorySuggestion = nil
                 }
-
-            if aiService.configuration.isReady {
-                HStack(spacing: 8) {
-                    TextField("Ex: gastei 45 no mercado ontem", text: $naturalLanguageInput)
-                        .textFieldStyle(.plain)
-                        .font(CFTheme.body())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .cfFieldChrome(isFocused: false)
-                    Button {
-                        Task { await applyNaturalLanguage() }
-                    } label: {
-                        Image(systemName: isParsingNL ? "hourglass" : "wand.and.stars")
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(naturalLanguageInput.trimmingCharacters(in: .whitespaces).isEmpty || isParsingNL)
-                }
-            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -113,24 +106,7 @@ struct AddTransactionSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 fieldSection(title: "Detalhes") {
                     labeledRow("Categoria") {
-                        VStack(alignment: .trailing, spacing: 6) {
-                            categoryPicker
-                            if draft.category == nil, draft.amount > 0, aiService.configuration.isReady {
-                                Button("Sugerir categoria") {
-                                    Task { await suggestCategory() }
-                                }
-                                .buttonStyle(.borderless)
-                                .font(CFTheme.caption())
-                            }
-                            if let categorySuggestion, draft.category == nil {
-                                Button("Usar \(categorySuggestion.name)") {
-                                    draft.category = categorySuggestion
-                                    self.categorySuggestion = nil
-                                }
-                                .buttonStyle(.borderless)
-                                .font(CFTheme.caption())
-                            }
-                        }
+                        categoryPicker
                     }
                     labeledRow("Conta") {
                         accountPicker
@@ -138,6 +114,33 @@ struct AddTransactionSheet: View {
                     labeledRow("Data") {
                         DateField(date: $draft.occurredOn)
                     }
+                }
+
+                if showsInstallmentSection {
+                    fieldSection(title: "Parcelar") {
+                        labeledRow("Parcelas") {
+                            Stepper(
+                                value: $installmentCount,
+                                in: 1...24
+                            ) {
+                                Text(installmentCount == 1 ? "À vista" : "\(installmentCount)x")
+                                    .font(CFTheme.body())
+                                    .monospacedDigit()
+                            }
+                            .controlSize(.small)
+                        }
+                        if installmentCount > 1 {
+                            Text(installmentSummary)
+                                .font(CFTheme.caption())
+                                .foregroundStyle(CFTheme.textSecondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                    }
+                }
+
+                if let plan = editingInstallment {
+                    installmentBanner(plan: plan)
                 }
 
                 if showingNote {
@@ -159,6 +162,69 @@ struct AddTransactionSheet: View {
             .padding(.vertical, 16)
         }
         .scrollIndicators(.never)
+    }
+
+    private var showsInstallmentSection: Bool {
+        !isEditing
+            && draft.kind == .expense
+            && draft.account?.kind == .creditCard
+    }
+
+    private var editingInstallment: InstallmentPlan? {
+        editing?.installmentPlan
+    }
+
+    private var installmentSummary: String {
+        let total = draft.amount
+        guard total > 0, installmentCount > 1 else { return "" }
+        let per = (total / Decimal(installmentCount)).brl
+        let calendar = Calendar.current
+        let firstReporting = draft.account.flatMap {
+            Transaction(amount: total, kind: .expense, occurredOn: draft.occurredOn, account: $0)
+                .reportingDate(calendar: calendar)
+        } ?? draft.occurredOn
+        let lastDate = calendar.date(byAdding: .month, value: installmentCount - 1, to: firstReporting) ?? firstReporting
+        let formatter = Date.FormatStyle.dateTime.month(.abbreviated).year(.twoDigits).locale(Money.locale)
+        let firstText = firstReporting.formatted(formatter)
+        let lastText = lastDate.formatted(formatter)
+        return "\(installmentCount)x de \(per) · 1ª: \(firstText) · última: \(lastText)"
+    }
+
+    private func installmentBanner(plan: InstallmentPlan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.caption)
+                    .foregroundStyle(CFTheme.accent)
+                Text("Parcela \(editing?.installmentIndex ?? 0) de \(plan.installmentCount)")
+                    .font(CFTheme.body().weight(.medium))
+                    .foregroundStyle(CFTheme.textPrimary)
+                Spacer()
+            }
+            Text("Editar afeta apenas esta parcela. Para mudar todas, exclua o plano inteiro e cadastre de novo.")
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+            CFPillButton(title: "Excluir plano inteiro", icon: "trash", style: .destructive) {
+                confirmingDeletePlan = true
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(CFTheme.accent.opacity(0.08))
+        )
+        .confirmationDialog(
+            "Excluir todas as \(plan.installmentCount) parcelas deste plano?",
+            isPresented: $confirmingDeletePlan,
+            titleVisibility: .visible
+        ) {
+            Button("Excluir plano", role: .destructive) {
+                deletePlan(plan)
+            }
+            Button("Cancelar", role: .cancel) {}
+        }
     }
 
     private func fieldSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -208,7 +274,7 @@ struct AddTransactionSheet: View {
     private var accountPicker: some View {
         CFSelectFieldOptional(
             selection: accountSelectionID,
-            options: accounts.map { account in
+            options: spendableAccounts.map { account in
                 CFSelectOption(
                     id: account.id,
                     title: account.name,
@@ -217,6 +283,10 @@ struct AddTransactionSheet: View {
                 )
             }
         )
+    }
+
+    private var spendableAccounts: [Account] {
+        accounts.filter { $0.kind != .investment }
     }
 
     private var categorySelectionID: Binding<UUID?> {
@@ -232,7 +302,7 @@ struct AddTransactionSheet: View {
         Binding(
             get: { draft.account?.id },
             set: { newID in
-                draft.account = accounts.first { $0.id == newID }
+                draft.account = spendableAccounts.first { $0.id == newID }
             }
         )
     }
@@ -306,8 +376,6 @@ struct AddTransactionSheet: View {
                 draft.category = match
             }
         }
-
-        amountFocused = true
     }
 
     private func save(closeAfter: Bool) {
@@ -320,6 +388,8 @@ struct AddTransactionSheet: View {
             editing.note = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
             editing.category = draft.category
             editing.account = draft.account
+        } else if showsInstallmentSection, installmentCount > 1, let account = draft.account {
+            insertInstallmentPlan(account: account)
         } else {
             let transaction = Transaction(
                 amount: draft.amount,
@@ -343,8 +413,49 @@ struct AddTransactionSheet: View {
             dismiss()
         } else {
             draft.resetForNextEntry()
-            amountFocused = true
         }
+    }
+
+    private func insertInstallmentPlan(account: Account) {
+        let noteBase = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let totalCents = NSDecimalNumber(decimal: draft.amount * 100).intValue
+        guard totalCents > 0 else { return }
+
+        let plan = InstallmentPlan(
+            purchaseDate: draft.occurredOn,
+            totalAmount: draft.amount,
+            installmentCount: installmentCount,
+            note: noteBase,
+            account: account,
+            category: draft.category
+        )
+        modelContext.insert(plan)
+
+        let drafts = InstallmentMaterializer.drafts(
+            purchaseDate: draft.occurredOn,
+            totalCents: totalCents,
+            installmentCount: installmentCount,
+            noteBase: noteBase
+        )
+
+        for d in drafts {
+            let txn = Transaction(
+                amount: d.amount,
+                kind: .expense,
+                occurredOn: d.occurredOn,
+                note: d.note,
+                category: draft.category,
+                account: account,
+                installmentPlan: plan,
+                installmentIndex: d.installmentIndex
+            )
+            modelContext.insert(txn)
+        }
+    }
+
+    private func deletePlan(_ plan: InstallmentPlan) {
+        modelContext.delete(plan)
+        dismiss()
     }
 
     private func deleteEditing() {
@@ -352,57 +463,6 @@ struct AddTransactionSheet: View {
             modelContext.delete(editing)
         }
         dismiss()
-    }
-
-    private func applyNaturalLanguage() async {
-        guard aiService.configuration.isReady else { return }
-        isParsingNL = true
-        defer { isParsingNL = false }
-        do {
-            let parsed = try await AICategorizeService.parseTransaction(
-                text: naturalLanguageInput,
-                aiService: aiService
-            )
-            if let amount = parsed.amount { draft.amount = amount }
-            if let kind = parsed.kind { draft.kind = kind }
-            if let date = parsed.date { draft.occurredOn = date }
-            if let note = parsed.note { draft.note = note; showingNote = true }
-            if let categoryName = parsed.categoryName {
-                draft.category = filteredCategories.first {
-                    $0.name.localizedCaseInsensitiveContains(categoryName)
-                }
-            }
-            if let accountName = parsed.accountName {
-                draft.account = accounts.first {
-                    $0.name.localizedCaseInsensitiveContains(accountName)
-                }
-            }
-            naturalLanguageInput = ""
-        } catch {
-            // Silent fail — user can still fill manually
-        }
-    }
-
-    private func suggestCategory() async {
-        guard aiService.configuration.isReady else { return }
-        do {
-            let suggestion = try await AICategorizeService.suggestCategory(
-                amount: draft.amount,
-                kind: draft.kind,
-                note: draft.note,
-                categories: categories,
-                aiService: aiService
-            )
-            guard let uuid = UUID(uuidString: suggestion.categoryId),
-                  let category = filteredCategories.first(where: { $0.id == uuid }) else { return }
-            if suggestion.confidence >= 0.8 {
-                draft.category = category
-            } else {
-                categorySuggestion = category
-            }
-        } catch {
-            categorySuggestion = nil
-        }
     }
 }
 

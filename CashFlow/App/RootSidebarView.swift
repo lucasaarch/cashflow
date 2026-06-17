@@ -1,19 +1,53 @@
 import SwiftUI
-
-enum SidebarDestination: Hashable {
-    case dashboard
-    case transactions
-    case categories
-    case accounts
-    case intelligence
-}
+import SwiftData
 
 struct RootSidebarView: View {
-    @EnvironmentObject private var aiService: AIService
-    @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @Query private var allBills: [Bill]
+
+    var pinSidebar: Bool
 
     @State private var selection: SidebarDestination? = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    init(pinSidebar: Bool = true) {
+        self.pinSidebar = pinSidebar
+    }
+
+    private var pendingBills: [Bill] {
+        allBills.filter { $0.isPending }
+    }
+
+    private var overdueCount: Int {
+        let now = Date.now
+        return pendingBills.filter { $0.dueDate < now }.count
+    }
+
+    private var pendingBillsCount: Int? {
+        guard !pendingBills.isEmpty else { return nil }
+        return pendingBills.count
+    }
+
+    private var billsSidebarRow: some View {
+        HStack {
+            Label("Contas a pagar", systemImage: "calendar.badge.clock")
+            Spacer(minLength: 0)
+            if overdueCount > 0 {
+                Text("\(overdueCount)")
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(CFTheme.danger))
+            } else if let pendingBillsCount {
+                Text("\(pendingBillsCount)")
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
+        }
+        .tag(SidebarDestination.bills)
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -21,11 +55,18 @@ struct RootSidebarView: View {
                 Section("Visão") {
                     Label("Visão geral", systemImage: "chart.pie.fill")
                         .tag(SidebarDestination.dashboard)
+                    Label("Relatórios", systemImage: "chart.bar.xaxis")
+                        .tag(SidebarDestination.reports)
+                    Label("Metas", systemImage: "flag.fill")
+                        .tag(SidebarDestination.goals)
                 }
 
                 Section("Movimentações") {
                     Label("Lançamentos", systemImage: "list.bullet.rectangle.fill")
                         .tag(SidebarDestination.transactions)
+                    billsSidebarRow
+                    Label("Despesas fixas", systemImage: "repeat.circle.fill")
+                        .tag(SidebarDestination.recurringExpenses)
                 }
 
                 Section("Cadastros") {
@@ -45,59 +86,18 @@ struct RootSidebarView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
             .toolbar(removing: .sidebarToggle)
         } detail: {
-            ZStack(alignment: .trailing) {
-                detailView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button {
-                                chatPanelState.toggle()
-                            } label: {
-                                Label("Saúde financeira", systemImage: "sparkles")
-                            }
-                            .help("Abrir chat de saúde financeira")
-                        }
-                    }
-
-                if chatPanelState.isOpen {
-                    AIChatSidePanel(aiService: aiService)
-                        .transition(.move(edge: .trailing))
-                        .shadow(color: .black.opacity(0.2), radius: 16, x: -4, y: 0)
-                }
-            }
-            .animation(CFMotion.snappy, value: chatPanelState.isOpen)
+            SidebarDetailView(destination: selection)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .aiChatPresentation()
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: columnVisibility) { _, newValue in
-            if newValue != .all {
+            if pinSidebar, newValue != .all {
                 columnVisibility = .all
             }
         }
-        .background(CFTheme.surfacePrimary)
 #if os(macOS)
         .removeSidebarToggleButton()
 #endif
-    }
-
-    @ViewBuilder
-    private var detailView: some View {
-        switch selection {
-        case .dashboard:
-            MonthDashboardView()
-        case .transactions:
-            TransactionListView()
-        case .categories:
-            CategoriesView()
-        case .accounts:
-            AccountsView()
-        case .intelligence:
-            AISettingsView()
-        case .none:
-            ContentUnavailableView(
-                "Selecione uma seção",
-                systemImage: "sidebar.left",
-                description: Text("Escolha um item na barra lateral.")
-            )
-        }
     }
 }

@@ -6,8 +6,8 @@ import SwiftUI
 final class AIService: ObservableObject {
     let configuration: AIConfiguration
 
-    init(configuration: AIConfiguration = AIConfiguration()) {
-        self.configuration = configuration
+    init(configuration: AIConfiguration? = nil) {
+        self.configuration = configuration ?? AIConfiguration()
     }
 
     func listModels(for provider: AIProviderID) async throws -> [AIModel] {

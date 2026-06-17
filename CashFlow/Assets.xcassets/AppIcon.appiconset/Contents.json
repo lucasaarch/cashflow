@@ -1,61 +1,67 @@
 {
   "images" : [
     {
-      "filename" : "CashFlow-16x16.png",
+      "filename" : "CashFlow2-1024x1024.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "filename" : "CashFlow2-16x16.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "16x16"
     },
     {
-      "filename" : "CashFlow-32x32 1.png",
+      "filename" : "CashFlow2-32x32 1.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "16x16"
     },
     {
-      "filename" : "CashFlow-32x32.png",
+      "filename" : "CashFlow2-32x32.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "32x32"
     },
     {
-      "filename" : "CashFlow-64x64.png",
+      "filename" : "CashFlow2-64x64.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "32x32"
     },
     {
-      "filename" : "CashFlow-128x128.png",
+      "filename" : "CashFlow2-128x128.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "128x128"
     },
     {
-      "filename" : "CashFlow-256x256 1.png",
+      "filename" : "CashFlow2-256x256 1.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "128x128"
     },
     {
-      "filename" : "CashFlow-256x256.png",
+      "filename" : "CashFlow2-256x256.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "256x256"
     },
     {
-      "filename" : "CashFlow-512x512 1.png",
+      "filename" : "CashFlow2-512x512 1.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "256x256"
     },
     {
-      "filename" : "CashFlow-512x512.png",
+      "filename" : "CashFlow2-512x512.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "512x512"
     },
     {
-      "filename" : "CashFlow-1024x1024.png",
+      "filename" : "CashFlow2-1024x1024.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "512x512"

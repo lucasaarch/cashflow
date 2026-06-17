@@ -19,6 +19,15 @@ final class Category {
     @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
     var transactions: [Transaction] = []
 
+    @Relationship(deleteRule: .nullify, inverse: \Bill.category)
+    var bills: [Bill] = []
+
+    @Relationship(deleteRule: .nullify, inverse: \RecurringExpense.category)
+    var recurringExpenses: [RecurringExpense] = []
+
+    @Relationship(deleteRule: .nullify, inverse: \InstallmentPlan.category)
+    var installmentPlans: [InstallmentPlan] = []
+
     var kind: CategoryKind {
         get { CategoryKind(rawValue: kindRaw) ?? .expense }
         set { kindRaw = newValue.rawValue }

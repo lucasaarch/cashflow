@@ -5,12 +5,14 @@ struct MonthSummary {
     let monthlyIncomeBudget: Decimal
     private let transactions: [Transaction]
     private let calendar: Calendar
+    private let now: Date
 
-    init(referenceDate: Date, monthlyIncomeBudget: Decimal, transactions: [Transaction], calendar: Calendar = .current) {
+    init(referenceDate: Date, monthlyIncomeBudget: Decimal, transactions: [Transaction], calendar: Calendar = .current, now: Date = .now) {
         self.referenceDate = referenceDate
         self.monthlyIncomeBudget = monthlyIncomeBudget
         self.transactions = transactions
         self.calendar = calendar
+        self.now = now
     }
 
     // MARK: - Month bounds
@@ -21,21 +23,69 @@ struct MonthSummary {
 
     var monthlyTransactions: [Transaction] {
         let interval = monthInterval
-        return transactions.filter { interval.contains($0.occurredOn) }
+        return transactions.filter { interval.contains(reportingDate(for: $0)) }
     }
 
-    // MARK: - Totals
+    /// Realized & spendable: excludes internal transfers (e.g. bank ↔ investment legs)
+    /// so they don't inflate `totalIncome` / `totalExpense` / pace.
+    var realizedMonthlyTransactions: [Transaction] {
+        monthlyTransactions.filter { $0.occurredOn <= now && !$0.isTransfer }
+    }
+
+    var plannedMonthlyTransactions: [Transaction] {
+        monthlyTransactions.filter { $0.occurredOn > now && !$0.isTransfer }
+    }
+
+    /// Net amount moved INTO investment accounts during the month (aportes − resgates).
+    var investedThisMonth: Decimal {
+        let invested = monthlyTransactions.filter {
+            $0.isTransfer && $0.occurredOn <= now && $0.account?.kind == .investment
+        }
+        return invested.reduce(Decimal(0)) { partial, txn in
+            switch txn.kind {
+            case .income:  return partial + txn.amount   // aporte recebido pela conta investimento
+            case .expense: return partial - txn.amount   // resgate (saída da invest)
+            }
+        }
+    }
+
+    private func reportingDate(for transaction: Transaction) -> Date {
+        switch transaction.kind {
+        case .expense:
+            return transaction.reportingDate(calendar: calendar)
+        case .income:
+            return transaction.occurredOn
+        }
+    }
+
+    // MARK: - Totals (realized only — what already hit the books)
 
     var totalIncome: Decimal {
-        monthlyTransactions
+        realizedMonthlyTransactions
             .filter { $0.kind == .income }
             .reduce(Decimal(0)) { $0 + $1.amount }
     }
 
     var totalExpense: Decimal {
-        monthlyTransactions
+        realizedMonthlyTransactions
             .filter { $0.kind == .expense }
             .reduce(Decimal(0)) { $0 + $1.amount }
+    }
+
+    var plannedIncome: Decimal {
+        plannedMonthlyTransactions
+            .filter { $0.kind == .income }
+            .reduce(Decimal(0)) { $0 + $1.amount }
+    }
+
+    var plannedExpense: Decimal {
+        plannedMonthlyTransactions
+            .filter { $0.kind == .expense }
+            .reduce(Decimal(0)) { $0 + $1.amount }
+    }
+
+    var hasPlanned: Bool {
+        plannedIncome > 0 || plannedExpense > 0
     }
 
     var balance: Decimal {
@@ -104,7 +154,7 @@ struct MonthSummary {
     }
 
     var expensesByCategory: [CategoryAggregate] {
-        let expenses = monthlyTransactions.filter { $0.kind == .expense && $0.category != nil }
+        let expenses = realizedMonthlyTransactions.filter { $0.kind == .expense && $0.category != nil }
         let grouped = Dictionary(grouping: expenses) { $0.category!.id }
         return grouped.compactMap { id, items -> CategoryAggregate? in
             guard let category = items.first?.category else { return nil }
@@ -119,7 +169,7 @@ struct MonthSummary {
     }
 
     var expensesByAccount: [AccountAggregate] {
-        let expenses = monthlyTransactions.filter { $0.kind == .expense && $0.account != nil }
+        let expenses = realizedMonthlyTransactions.filter { $0.kind == .expense && $0.account != nil }
         let grouped = Dictionary(grouping: expenses) { $0.account!.id }
         return grouped.compactMap { id, items -> AccountAggregate? in
             guard let account = items.first?.account else { return nil }

@@ -24,7 +24,7 @@ struct IconPickerField: View {
             .cfPickerChip()
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $showingPicker, arrowEdge: .top) {
+        .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: "Ícone") {
             IconPickerGrid(symbolName: $symbolName, tint: tint, dismiss: { showingPicker = false })
         }
     }

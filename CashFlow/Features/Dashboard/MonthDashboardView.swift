@@ -11,13 +11,34 @@ struct MonthDashboardView: View {
            sort: [SortDescriptor(\Account.sortOrder)])
     private var accounts: [Account]
 
-    @AppStorage(UserDefaultsKeys.monthlyIncomeCents) private var monthlyIncomeCents: Int = 0
+    @Query(sort: [SortDescriptor(\Bill.dueDate)])
+    private var bills: [Bill]
+
+    @Query(sort: [SortDescriptor(\FinancialGoal.createdAt, order: .reverse)])
+    private var goals: [FinancialGoal]
+
+    @Query(filter: #Predicate<AppSettings> { $0.id == "default" })
+    private var appSettings: [AppSettings]
+
     @State private var referenceDate: Date = .now
     @State private var editingIncome = false
     @State private var insightText: String?
     @State private var insightLoading = false
     @State private var insightError: String?
+    @State private var insightCachedAt: Date?
+    @State private var insightIsFresh: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var monthlyIncomeCents: Int {
+        appSettings.first?.monthlyIncomeCents ?? 0
+    }
+
+    private var monthlyIncomeBinding: Binding<Int> {
+        Binding(
+            get: { appSettings.first?.monthlyIncomeCents ?? 0 },
+            set: { appSettings.first?.monthlyIncomeCents = $0 }
+        )
+    }
 
     private var summary: MonthSummary {
         MonthSummary(
@@ -27,16 +48,31 @@ struct MonthDashboardView: View {
         )
     }
 
-    private var liquidBalance: Decimal {
-        accounts
-            .filter { $0.kind.isLiquid }
-            .reduce(Decimal(0)) { $0 + $1.currentBalance(considering: transactions) }
+    private var overview: FinancialOverview {
+        FinancialOverview(accounts: accounts, transactions: transactions, bills: bills)
     }
 
-    private var debtBalance: Decimal {
-        accounts
-            .filter { !$0.kind.isLiquid }
-            .reduce(Decimal(0)) { $0 + abs($1.currentBalance(considering: transactions)) }
+    private var highlightsPanel: DashboardHighlightsPanel {
+        DashboardHighlightsPanel(
+            bills: bills,
+            goals: goals,
+            transactions: transactions,
+            investedThisMonth: summary.investedThisMonth,
+            totalInvested: overview.investmentBalance
+        )
+    }
+
+    private var analysisPanel: DashboardAnalysisPanel {
+        DashboardAnalysisPanel(
+            categoryAggregates: summary.expensesByCategory,
+            accountAggregates: summary.expensesByAccount,
+            totalExpense: summary.totalExpense
+        )
+    }
+
+    private var pendingBillsThisMonthList: [Bill] {
+        let interval = summary.monthInterval
+        return bills.filter { $0.isPending && interval.contains($0.dueDate) }
     }
 
     var body: some View {
@@ -68,56 +104,13 @@ struct MonthDashboardView: View {
 
     private var dashboardScroll: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HeroKPIsCard(
-                    summary: summary,
-                    liquidBalance: liquidBalance,
-                    debtBalance: debtBalance,
-                    editingIncome: $editingIncome,
-                    monthlyIncomeCents: $monthlyIncomeCents
-                )
-                .cfStaggerAppear(index: 0)
-                .id(referenceDate)
-
-                if aiService.configuration.isReady {
-                    insightCard
-                        .cfStaggerAppear(index: 1)
-                }
-
-                if monthlyIncomeCents > 0 {
-                    ViewThatFits {
-                        HStack(alignment: .top, spacing: 16) {
-                            PaceCard(summary: summary)
-                                .frame(maxWidth: .infinity)
-                            CategoryBreakdownCard(
-                                aggregates: summary.expensesByCategory,
-                                totalExpense: summary.totalExpense
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        VStack(spacing: 16) {
-                            PaceCard(summary: summary)
-                            CategoryBreakdownCard(
-                                aggregates: summary.expensesByCategory,
-                                totalExpense: summary.totalExpense
-                            )
-                        }
-                    }
-                    .cfStaggerAppear(index: 1)
-                } else {
-                    CategoryBreakdownCard(
-                        aggregates: summary.expensesByCategory,
-                        totalExpense: summary.totalExpense
-                    )
-                    .cfStaggerAppear(index: 1)
-                }
-
-                AccountBreakdownCard(aggregates: summary.expensesByAccount)
-                    .cfStaggerAppear(index: 2)
+            ViewThatFits(in: .horizontal) {
+                asideDashboard
+                stackedDashboard
             }
-            .padding(20)
-            .frame(maxWidth: 900)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.asymmetric(
                 insertion: .opacity.combined(with: .offset(y: 8)),
                 removal: .opacity
@@ -129,34 +122,170 @@ struct MonthDashboardView: View {
         .onChange(of: referenceDate) { _, _ in loadCachedInsight() }
     }
 
-    private var insightCard: some View {
-        CFGlassCard(title: "Resumo inteligente") {
-            VStack(alignment: .leading, spacing: 10) {
-                if let insightText {
-                    Text(insightText)
-                        .font(CFTheme.body())
-                        .foregroundStyle(CFTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Spacer()
-                        CFPillButton(title: "Atualizar", style: .ghost) {
-                            Task { await generateInsight(force: true) }
-                        }
-                    }
-                } else if insightLoading {
-                    ProgressView("Gerando resumo…")
-                        .controlSize(.small)
-                } else {
-                    CFPillButton(title: "Gerar resumo", style: .primary) {
-                        Task { await generateInsight(force: false) }
-                    }
+    /// Wide: main column left, insight aside right — uses full width.
+    private var asideDashboard: some View {
+        HStack(alignment: .top, spacing: 16) {
+            mainColumn.cfStaggerAppear(index: 0)
+
+            if showsInsight {
+                insightAside
+                    .frame(width: 340)
+                    .cfStaggerAppear(index: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 880)
+    }
+
+    /// Narrow: stacked, insight after main content.
+    private var stackedDashboard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            mainColumn.cfStaggerAppear(index: 0)
+            if showsInsight {
+                insightAside.cfStaggerAppear(index: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DashboardHeroPanel(overview: overview)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    monthAndHighlightsRow
                 }
+                VStack(alignment: .leading, spacing: 12) {
+                    monthAndHighlightsRow
+                }
+            }
+
+            if analysisPanel.shouldShow {
+                analysisPanel
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var monthAndHighlightsRow: some View {
+        DashboardMonthPanel(
+            summary: summary,
+            showsPace: showsPace,
+            editingIncome: $editingIncome,
+            monthlyIncomeCents: monthlyIncomeBinding
+        )
+        .frame(maxWidth: .infinity)
+        .id(referenceDate)
+
+        if highlightsPanel.shouldShow {
+            highlightsPanel
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var insightAside: some View {
+        insightPanel
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var showsInsight: Bool { aiService.configuration.isReady }
+    private var showsPace: Bool { monthlyIncomeCents > 0 }
+
+    private var insightPanel: some View {
+        CFPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                insightHeader
+                insightBody
                 if let insightError {
                     Text(insightError)
                         .font(CFTheme.caption())
                         .foregroundStyle(CFTheme.expense)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .overlay {
+            if insightIsFresh && !reduceMotion {
+                RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
+                    .stroke(CFTheme.accent.opacity(0.45), lineWidth: 1.2)
+                    .blur(radius: 4)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : CFMotion.gentle, value: insightIsFresh)
+    }
+
+    private var insightHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(CFTheme.accent)
+                Text("Resumo inteligente")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CFTheme.textPrimary)
+                Spacer(minLength: 0)
+                if insightText != nil && !insightLoading {
+                    Button {
+                        Task { await generateInsight(force: true) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(CFTheme.textSecondary)
+                            .frame(width: 24, height: 24)
+                            .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Atualizar resumo")
+                }
+            }
+            if let chip = freshnessChip {
+                Text(chip)
+                    .font(.caption2)
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var insightBody: some View {
+        if insightLoading {
+            VStack(alignment: .leading, spacing: 10) {
+                CFSkeletonLine(height: 11, widthFraction: 0.95)
+                CFSkeletonLine(height: 11, widthFraction: 0.85)
+                CFSkeletonLine(height: 11, widthFraction: 0.7)
+            }
+            .padding(.vertical, 4)
+        } else if let insightText {
+            CFTypewriter(text: insightText, markdown: true, animated: insightIsFresh)
+                .font(.callout)
+                .foregroundStyle(CFTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(3)
+        } else {
+            CFPillButton(title: "Gerar resumo", icon: "sparkles", style: .primary) {
+                Task { await generateInsight(force: false) }
+            }
+        }
+    }
+
+    private var freshnessChip: String? {
+        guard insightText != nil, let cachedAt = insightCachedAt else { return nil }
+        let seconds = Int(Date.now.timeIntervalSince(cachedAt))
+        switch seconds {
+        case ..<60: return "agora mesmo"
+        case 60..<3600:
+            let minutes = seconds / 60
+            return "há \(minutes) min"
+        case 3600..<86400:
+            let hours = seconds / 3600
+            return "há \(hours)h"
+        default:
+            let days = seconds / 86400
+            return "há \(days)d"
         }
     }
 
@@ -168,13 +297,16 @@ struct MonthDashboardView: View {
 
     private func loadCachedInsight() {
         insightText = AIInsightsService.cachedInsight(monthKey: monthKey)
+        insightCachedAt = AIInsightsService.cachedInsightDate(monthKey: monthKey)
         insightError = nil
+        insightIsFresh = false
     }
 
     private func generateInsight(force: Bool) async {
         if !force, insightText != nil { return }
         insightLoading = true
         insightError = nil
+        insightIsFresh = false
         defer { insightLoading = false }
 
         let calendar = Calendar.current
@@ -188,12 +320,23 @@ struct MonthDashboardView: View {
         do {
             let text = try await AIInsightsService.generateInsight(
                 summary: summary,
-                transactions: summary.monthlyTransactions,
+                overview: overview,
+                accounts: accounts,
+                bills: bills,
+                goals: goals,
+                transactions: transactions,
                 previousMonthExpense: previousSummary.totalExpense,
+                pendingBillsThisMonth: pendingBillsThisMonthList,
                 aiService: aiService
             )
-            insightText = text
             AIInsightsService.cacheInsight(text, monthKey: monthKey)
+            insightText = text
+            insightCachedAt = AIInsightsService.cachedInsightDate(monthKey: monthKey)
+            insightIsFresh = true
+            Task {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                insightIsFresh = false
+            }
         } catch {
             insightError = error.localizedDescription
         }
@@ -246,189 +389,6 @@ struct MonthDashboardView: View {
     private func shiftMonth(by amount: Int) {
         if let new = Calendar.current.date(byAdding: .month, value: amount, to: referenceDate) {
             referenceDate = new
-        }
-    }
-}
-
-// MARK: - Hero KPIs
-
-private struct HeroKPIsCard: View {
-    let summary: MonthSummary
-    let liquidBalance: Decimal
-    let debtBalance: Decimal
-    @Binding var editingIncome: Bool
-    @Binding var monthlyIncomeCents: Int
-
-    var body: some View {
-        CFGlassCard(padding: 24) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Saldo atual")
-                        .font(CFTheme.body())
-                        .foregroundStyle(CFTheme.textSecondary)
-                    Spacer()
-                    CFPillButton(
-                        title: monthlyIncomeCents == 0 ? "Definir orçamento" : "Editar orçamento",
-                        icon: monthlyIncomeCents == 0 ? "plus.circle" : "pencil",
-                        style: .ghost
-                    ) {
-                        editingIncome.toggle()
-                    }
-                    .help("Orçamento mensal")
-                }
-
-                CFAnimatedAmount(
-                    amount: liquidBalance,
-                    color: liquidBalance >= 0 ? CFTheme.textPrimary : CFTheme.danger
-                )
-
-                HStack(spacing: 14) {
-                    CFMetricTile(
-                        label: "Entrou no mês",
-                        amount: summary.totalIncome,
-                        icon: "arrow.down.left",
-                        tint: CFTheme.income
-                    )
-                    Divider().frame(height: 36)
-                    CFMetricTile(
-                        label: "Saiu no mês",
-                        amount: summary.totalExpense,
-                        icon: "arrow.up.right",
-                        tint: CFTheme.expense
-                    )
-                    if debtBalance > 0 {
-                        Divider().frame(height: 36)
-                        CFMetricTile(
-                            label: "Em cartões",
-                            amount: debtBalance,
-                            icon: "creditcard.fill",
-                            tint: CFTheme.debt
-                        )
-                    }
-                }
-            }
-        }
-        .popover(isPresented: $editingIncome) {
-            MonthlyIncomeEditor(cents: $monthlyIncomeCents)
-                .frame(width: 300)
-        }
-    }
-}
-
-private struct MonthlyIncomeEditor: View {
-    @Binding var cents: Int
-    @State private var amount: Decimal = 0
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Orçamento mensal")
-                .font(.headline)
-            Text("Quanto você espera ter disponível este mês (salário + outras entradas previstas).")
-                .font(.caption)
-                .foregroundStyle(CFTheme.textSecondary)
-            Text("O CashFlow compara com o que você já gastou e mostra o card de Ritmo, indicando se vai sobrar dinheiro até o fim do mês ou se está gastando rápido demais.")
-                .font(.caption)
-                .foregroundStyle(CFTheme.textSecondary)
-            CurrencyField(amount: $amount, placeholder: "R$ 0,00", style: .form)
-                .font(.title3)
-            if cents > 0 {
-                Button(role: .destructive) {
-                    amount = 0
-                    cents = 0
-                } label: {
-                    Label("Remover orçamento", systemImage: "xmark.circle")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .padding(16)
-        .onAppear { amount = Decimal(cents) / 100 }
-        .onChange(of: amount) { _, newValue in
-            cents = NSDecimalNumber(decimal: newValue * 100).intValue
-        }
-    }
-}
-
-// MARK: - Pace card
-
-private struct PaceCard: View {
-    let summary: MonthSummary
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pulse = false
-
-    var body: some View {
-        CFGlassCard(title: "Ritmo do mês", subtitle: subtitle) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: summary.paceState.symbol)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(CFTheme.paceColor(for: summary.paceState))
-                        .scaleEffect(summary.paceState == .danger ? (pulse ? 1.08 : 1) : 1)
-                    Text(summary.paceState.label)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(CFTheme.paceColor(for: summary.paceState))
-                }
-                .onAppear {
-                    updatePulse(for: summary.paceState)
-                }
-                .onChange(of: summary.paceState) { _, newValue in
-                    updatePulse(for: newValue)
-                }
-
-                doubleBar
-                legend
-            }
-        }
-    }
-
-    private var doubleBar: some View {
-        VStack(spacing: 8) {
-            CFProgressBar(progress: summary.dayProgress, color: CFTheme.textSecondary.opacity(0.45), height: 8)
-            CFProgressBar(progress: min(summary.spentRatio, 1.5), color: CFTheme.paceColor(for: summary.paceState), height: 8)
-        }
-    }
-
-    private var legend: some View {
-        HStack(spacing: 14) {
-            legendItem(swatch: CFTheme.textSecondary.opacity(0.45), label: "Mês passou", value: "\(Int(summary.dayProgress * 100))%")
-            legendItem(swatch: CFTheme.paceColor(for: summary.paceState), label: "Você gastou", value: "\(Int(summary.spentRatio * 100))%")
-            Spacer()
-            if summary.daysRemaining > 0 {
-                Text("\(summary.dailyBudgetRemaining.brl) por dia até o fim")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-        }
-        .font(.caption)
-    }
-
-    private func legendItem(swatch: Color, label: String, value: String) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(swatch).frame(width: 10, height: 10)
-            Text(label).foregroundStyle(CFTheme.textSecondary)
-            Text(value).monospacedDigit()
-        }
-    }
-
-    private var subtitle: String {
-        let remaining = summary.daysRemaining
-        if remaining == 0 { return "Mês fechado" }
-        return "Faltam \(remaining) \(remaining == 1 ? "dia" : "dias")"
-    }
-
-    private func updatePulse(for state: PaceState) {
-        guard !reduceMotion else {
-            pulse = false
-            return
-        }
-        if state == .danger {
-            pulse = false
-            withAnimation(CFMotion.snappy.repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        } else {
-            pulse = false
         }
     }
 }

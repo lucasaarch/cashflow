@@ -13,31 +13,16 @@ struct CashFlowApp: App {
     @StateObject private var aiService = AIService()
     @StateObject private var chatPanelState = AIChatPanelState()
 
-    var sharedModelContainer: ModelContainer = {
-        DataReset.wipeStoreIfNeeded()
-
-        let schema = Schema([
-            Transaction.self,
-            Category.self,
-            Account.self,
-            ChatConversation.self,
-            ChatMessage.self
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    var sharedModelContainer: ModelContainer = ModelContainerFactory.make()
 
     var body: some Scene {
         WindowGroup {
-            RootSidebarView()
+            AdaptiveRootView()
                 .environmentObject(aiService)
                 .environmentObject(chatPanelState)
+                #if os(macOS)
                 .frame(minWidth: 900, minHeight: 600)
+                #endif
         }
         .modelContainer(sharedModelContainer)
 #if os(macOS)

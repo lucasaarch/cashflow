@@ -38,9 +38,8 @@ struct DateField: View {
             .cfPickerChip()
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
+        .cfAdaptivePicker(isPresented: $showingPopover, arrowEdge: .bottom, sheetTitle: "Data") {
             popoverContent
-                .presentationBackground(CFTheme.surfacePrimary)
         }
     }
 

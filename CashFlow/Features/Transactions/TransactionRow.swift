@@ -6,15 +6,29 @@ struct TransactionRow: View {
     var body: some View {
         HStack(spacing: 14) {
             CFIconBadge(
-                symbolName: transaction.category?.symbolName ?? "questionmark.circle",
+                symbolName: rowSymbol,
                 tint: rowTint,
                 size: CFTheme.iconSize
             )
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(transaction.category?.name ?? "Sem categoria")
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
+                HStack(spacing: 8) {
+                    Text(rowTitle)
+                        .font(CFTheme.body())
+                        .foregroundStyle(CFTheme.textPrimary)
+                    if isPlanned {
+                        plannedBadge
+                    }
+                    if transaction.isTransfer {
+                        transferBadge
+                    }
+                    if transaction.isInstallment, let plan = transaction.installmentPlan {
+                        installmentBadge(plan: plan)
+                    }
+                    if transaction.isRecurring {
+                        recurringBadge
+                    }
+                }
 
                 HStack(spacing: 6) {
                     if let account = transaction.account {
@@ -24,6 +38,16 @@ struct TransactionRow: View {
                         Text(account.name)
                             .font(.caption)
                             .foregroundStyle(CFTheme.textSecondary)
+                    }
+                    if let billingCaption = transaction.billingCycleCaption() {
+                        if transaction.account != nil {
+                            Text("·")
+                                .font(.caption)
+                                .foregroundStyle(CFTheme.textTertiary)
+                        }
+                        Text(billingCaption)
+                            .font(.caption)
+                            .foregroundStyle(CFTheme.textTertiary)
                     }
                     if !transaction.note.isEmpty {
                         Text("·")
@@ -44,10 +68,88 @@ struct TransactionRow: View {
                 .monospacedDigit()
                 .foregroundStyle(amountColor)
         }
+        .opacity(isPlanned ? 0.7 : 1)
+    }
+
+    private var isPlanned: Bool {
+        transaction.occurredOn > .now
+    }
+
+    private var rowTitle: String {
+        if transaction.isTransfer {
+            switch (transaction.account?.kind, transaction.kind) {
+            case (.investment, .income), (.bank, .expense):
+                return "Aporte"
+            case (.investment, .expense), (.bank, .income):
+                return "Resgate"
+            default:
+                return "Transferência"
+            }
+        }
+        return transaction.category?.name ?? "Sem categoria"
+    }
+
+    private var plannedBadge: some View {
+        Text("Previsto")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(CFTheme.textSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(CFTheme.textTertiary.opacity(0.18))
+            )
+    }
+
+    private var transferBadge: some View {
+        Text("Transferência")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(CFTheme.accent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(CFTheme.accent.opacity(0.15))
+            )
+    }
+
+    private func installmentBadge(plan: InstallmentPlan) -> some View {
+        Text("\(transaction.installmentIndex)/\(plan.installmentCount)")
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(CFTheme.textSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(CFTheme.textTertiary.opacity(0.18))
+            )
+    }
+
+    private var recurringBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "repeat")
+                .font(.caption2.weight(.semibold))
+            Text("Recorrente")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(CFTheme.textSecondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            Capsule().fill(CFTheme.textTertiary.opacity(0.18))
+        )
+    }
+
+    private var rowSymbol: String {
+        if transaction.isTransfer {
+            return "chart.line.uptrend.xyaxis"
+        }
+        return transaction.category?.symbolName ?? "questionmark.circle"
     }
 
     private var rowTint: Color {
-        transaction.kind == .expense ? CFTheme.expense : CFTheme.income
+        if transaction.isTransfer {
+            return CFTheme.accent
+        }
+        return transaction.kind == .expense ? CFTheme.expense : CFTheme.income
     }
 
     private var formattedAmount: String {
@@ -56,6 +158,9 @@ struct TransactionRow: View {
     }
 
     private var amountColor: Color {
-        transaction.kind == .expense ? CFTheme.textPrimary : CFTheme.income
+        if transaction.isTransfer {
+            return CFTheme.accent
+        }
+        return transaction.kind == .expense ? CFTheme.textPrimary : CFTheme.income
     }
 }

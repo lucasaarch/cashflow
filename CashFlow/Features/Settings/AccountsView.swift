@@ -8,6 +8,8 @@ struct AccountsView: View {
 
     @State private var showingAdd = false
     @State private var editingAccount: Account?
+    @State private var invoiceAccount: Account?
+    @State private var transferAccount: Account?
 
     var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
@@ -15,6 +17,21 @@ struct AccountsView: View {
 
     var archivedAccounts: [Account] {
         accounts.filter { $0.isArchived }
+    }
+
+    /// Order of sections on the screen.
+    private let groupOrder: [AccountKind] = [.bank, .creditCard, .investment]
+
+    private func activeAccounts(of kind: AccountKind) -> [Account] {
+        activeAccounts.filter { $0.kind == kind }
+    }
+
+    private func sectionTitle(for kind: AccountKind) -> String {
+        switch kind {
+        case .bank:       return "Contas"
+        case .creditCard: return "Cartões"
+        case .investment: return "Investimentos"
+        }
     }
 
     var body: some View {
@@ -42,6 +59,12 @@ struct AccountsView: View {
         .sheet(item: $editingAccount) { account in
             AccountSheet(editing: account)
         }
+        .sheet(item: $invoiceAccount) { account in
+            CardInvoiceSheet(account: account)
+        }
+        .sheet(item: $transferAccount) { account in
+            InvestmentTransferSheet(investmentAccount: account)
+        }
     }
 
     private var emptyState: some View {
@@ -58,8 +81,11 @@ struct AccountsView: View {
     private var accountList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                if !activeAccounts.isEmpty {
-                    activeSection
+                ForEach(groupOrder, id: \.self) { kind in
+                    let kindAccounts = activeAccounts(of: kind)
+                    if !kindAccounts.isEmpty {
+                        kindSection(kind: kind, accounts: kindAccounts)
+                    }
                 }
 
                 if !archivedAccounts.isEmpty {
@@ -71,24 +97,45 @@ struct AccountsView: View {
         .cfPageBackground()
     }
 
-    private var activeSection: some View {
+    private func kindSection(kind: AccountKind, accounts: [Account]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Ativas")
+            Text(sectionTitle(for: kind))
                 .font(CFTheme.caption())
                 .foregroundStyle(CFTheme.textSecondary)
                 .textCase(.uppercase)
                 .padding(.horizontal, 2)
 
-            ForEach(activeAccounts) { account in
+            ForEach(accounts) { account in
                 let balance = account.currentBalance(considering: transactions)
                 CFHoverRow {
                     accountRowContent(account, balance: balance)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    editingAccount = account
+                    switch account.kind {
+                    case .creditCard:
+                        invoiceAccount = account
+                    case .investment:
+                        transferAccount = account
+                    case .bank:
+                        editingAccount = account
+                    }
                 }
                 .contextMenu {
+                    if account.kind == .creditCard {
+                        Button {
+                            invoiceAccount = account
+                        } label: {
+                            Label("Ver fatura", systemImage: "doc.text")
+                        }
+                    }
+                    if account.kind == .investment {
+                        Button {
+                            transferAccount = account
+                        } label: {
+                            Label("Aportar / Resgatar", systemImage: "arrow.left.arrow.right")
+                        }
+                    }
                     Button {
                         editingAccount = account
                     } label: {
@@ -143,7 +190,7 @@ struct AccountsView: View {
                 Text(account.name)
                     .font(CFTheme.body())
                     .foregroundStyle(CFTheme.textPrimary)
-                Text(account.kind.displayName)
+                Text(accountSubtitle(account))
                     .font(CFTheme.caption())
                     .foregroundStyle(CFTheme.textSecondary)
             }
@@ -164,18 +211,35 @@ struct AccountsView: View {
         }
     }
 
+    private func accountSubtitle(_ account: Account) -> String {
+        if account.kind == .creditCard {
+            let statement = account.openStatement(considering: transactions)
+            if let due = statement.dueDate, statement.totalDebt > 0 {
+                let dueText = due.formatted(.dateTime.day().month(.abbreviated).locale(Money.locale))
+                return "Vence \(dueText)"
+            }
+            if let billing = account.billingCycleCaption {
+                return billing
+            }
+            return "Cartão"
+        }
+        return account.kind.displayName
+    }
+
     private func balanceColor(for account: Account, balance: Decimal) -> Color {
         switch account.kind {
         case .bank:
             return balance < 0 ? CFTheme.danger : CFTheme.textPrimary
         case .creditCard:
             return CFTheme.debt
+        case .investment:
+            return CFTheme.accent
         }
     }
 
     private func displayedBalance(for account: Account, balance: Decimal) -> Decimal {
         switch account.kind {
-        case .bank:
+        case .bank, .investment:
             return balance
         case .creditCard:
             return abs(balance)
@@ -190,6 +254,8 @@ struct AccountsView: View {
             if balance < 0 { return "A pagar" }
             if balance == 0 { return "Fatura zerada" }
             return "Crédito"
+        case .investment:
+            return "Investido"
         }
     }
 
@@ -212,7 +278,8 @@ private struct AccountSheet: View {
     @State private var color: Color
     @State private var openingBalance: Decimal
     @State private var openingDate: Date
-    @FocusState private var balanceFocused: Bool
+    @State private var closingDay: Int
+    @State private var dueDay: Int
 
     init(editing: Account? = nil) {
         self.editing = editing
@@ -227,30 +294,53 @@ private struct AccountSheet: View {
         let editableBalance = initialKind == .creditCard ? abs(rawBalance) : rawBalance
         _openingBalance = State(initialValue: editableBalance)
         _openingDate = State(initialValue: editing?.openingDate ?? .now)
+        _closingDay = State(initialValue: editing?.closingDay ?? 0)
+        _dueDay = State(initialValue: editing?.dueDay ?? 0)
     }
 
     private var isEditing: Bool { editing != nil }
     private var hasUsage: Bool { (editing?.transactions.count ?? 0) > 0 }
 
     private var namePlaceholder: String {
-        kind == .creditCard ? "Cartão Inter, Cartão Giovanna…" : "Banco Inter, Carteira…"
+        switch kind {
+        case .creditCard: return "Cartão Inter, Cartão Giovanna…"
+        case .investment: return "CDB Inter, Tesouro Selic…"
+        case .bank:       return "Banco Inter, Carteira…"
+        }
+    }
+
+    private var balanceTitle: String {
+        switch kind {
+        case .creditCard: return "Fatura em aberto"
+        case .investment: return "Saldo investido"
+        case .bank:       return "Saldo inicial"
+        }
     }
 
     private var balanceHint: String {
         switch kind {
         case .bank:
-            return "Quanto tem nessa conta no dia que você começou a usar o app."
+            return "Quanto tem nessa conta no dia em que você começou a usar o app."
         case .creditCard:
-            return "Quanto já está em aberto/devendo nesse cartão. Deixe R$ 0,00 se não tem fatura pendente."
+            return "Quanto já está devendo neste cartão. Deixe R$ 0,00 se não há fatura pendente."
+        case .investment:
+            return "Quanto já está aplicado neste investimento. Use R$ 0,00 se vai começar a aportar agora."
         }
+    }
+
+    private var sheetHeight: CGFloat {
+        kind == .creditCard ? 560 : 480
+    }
+
+    private var billingHint: String {
+        "Compras até o fechamento entram na fatura; o vencimento é o prazo para pagar."
     }
 
     var body: some View {
         VStack(spacing: 0) {
             CFAmountHeader(
-                title: "Saldo Inicial",
-                amount: $openingBalance,
-                amountFocus: $balanceFocused
+                title: balanceTitle,
+                amount: $openingBalance
             )
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -258,14 +348,24 @@ private struct AccountSheet: View {
             Divider()
             formContent
             Divider()
-            footer
+            footer.cfAdaptiveSheetFooterVisible()
         }
-        .frame(width: 500, height: 490)
-        .onAppear { balanceFocused = true }
+        .cfAdaptiveSheetNavigation()
+        .cfAdaptiveSheetFrame(width: 500, height: sheetHeight)
+        .cfCompactSheetToolbar(
+            title: isEditing ? "Editar conta" : "Nova conta",
+            saveDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+            onCancel: { dismiss() },
+            onSave: { save(); dismiss() }
+        )
+        .cfAdaptiveSheetDetents()
         .onChange(of: kind) { oldValue, newValue in
-            // If user hasn't picked a custom icon, swap the default to match the new kind.
             if !isEditing, symbolName == oldValue.defaultSymbolName {
                 symbolName = newValue.defaultSymbolName
+            }
+            if newValue != .creditCard {
+                closingDay = 0
+                dueDay = 0
             }
         }
         .cfSheetBackground()
@@ -274,40 +374,67 @@ private struct AccountSheet: View {
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Identificação") {
+            VStack(alignment: .leading, spacing: 20) {
+                sectionGroup(title: "Identificação") {
                     CFInputField(label: "Nome", text: $name, placeholder: namePlaceholder)
 
-                    labeledRow("Tipo") {
+                    panelDivider
+
+                    panelRow("Tipo") {
                         CFSelectField(
                             selection: $kind,
                             options: AccountKind.selectOptions,
                             disabled: hasUsage
                         )
                     }
+
+                    if hasUsage {
+                        panelDivider
+                        Text("Tipo bloqueado: há lançamentos nessa conta. Arquive e crie uma nova se precisar mudar.")
+                            .font(CFTheme.caption())
+                            .foregroundStyle(CFTheme.textSecondary)
+                            .padding(.vertical, 4)
+                    }
                 }
 
-                if hasUsage {
-                    Text("Tipo bloqueado: há lançamentos nessa conta. Arquive e crie uma nova se precisar mudar.")
-                        .font(CFTheme.caption())
-                        .foregroundStyle(CFTheme.textSecondary)
-                }
-
-                section(title: "Referência") {
-                    labeledRow("Desde") {
+                sectionGroup(title: "Ponto de partida", footnote: balanceHint) {
+                    panelRow("Usando desde") {
                         DateField(date: $openingDate)
                     }
                 }
 
-                Text(balanceHint)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
+                if kind == .creditCard {
+                    sectionGroup(title: "Ciclo da fatura", footnote: billingHint) {
+                        panelRow("Fechamento") {
+                            HStack(spacing: 4) {
+                                Text("dia")
+                                    .font(CFTheme.caption())
+                                    .foregroundStyle(CFTheme.textTertiary)
+                                DayOfMonthField(day: $closingDay)
+                            }
+                        }
 
-                section(title: "Aparência") {
-                    labeledRow("Ícone") {
+                        panelDivider
+
+                        panelRow("Vencimento") {
+                            HStack(spacing: 4) {
+                                Text("dia")
+                                    .font(CFTheme.caption())
+                                    .foregroundStyle(CFTheme.textTertiary)
+                                DayOfMonthField(day: $dueDay)
+                            }
+                        }
+                    }
+                }
+
+                sectionGroup(title: "Aparência") {
+                    panelRow("Ícone") {
                         IconPickerField(symbolName: $symbolName, tint: color)
                     }
-                    labeledRow("Cor") {
+
+                    panelDivider
+
+                    panelRow("Cor") {
                         ColorPickerField(color: $color)
                     }
                 }
@@ -319,17 +446,42 @@ private struct AccountSheet: View {
         .scrollIndicators(.never)
     }
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var panelDivider: some View {
+        Divider().opacity(0.35)
+    }
+
+    private func sectionGroup<Content: View>(
+        title: String,
+        footnote: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(CFTheme.caption())
                 .foregroundStyle(CFTheme.textSecondary)
                 .textCase(.uppercase)
-            content()
+                .padding(.horizontal, 2)
+
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(CFTheme.surfaceElevated.opacity(0.38))
+            )
+
+            if let footnote {
+                Text(footnote)
+                    .font(CFTheme.caption())
+                    .foregroundStyle(CFTheme.textSecondary)
+                    .padding(.horizontal, 2)
+            }
         }
     }
 
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func panelRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(CFTheme.body())
@@ -337,12 +489,7 @@ private struct AccountSheet: View {
             Spacer(minLength: 8)
             content()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
+        .padding(.vertical, 8)
     }
 
     private var footer: some View {
@@ -380,6 +527,8 @@ private struct AccountSheet: View {
             editing.colorHex = color.hexString
             editing.openingBalance = storedBalance
             editing.openingDate = normalizedDate
+            editing.closingDay = kind == .creditCard ? closingDay : 0
+            editing.dueDay = kind == .creditCard ? dueDay : 0
             if !hasUsage {
                 editing.kind = kind
             }
@@ -392,7 +541,9 @@ private struct AccountSheet: View {
                 symbolName: finalSymbol,
                 sortOrder: nextSort,
                 openingBalance: storedBalance,
-                openingDate: normalizedDate
+                openingDate: normalizedDate,
+                closingDay: kind == .creditCard ? closingDay : 0,
+                dueDay: kind == .creditCard ? dueDay : 0
             )
             modelContext.insert(account)
         }
@@ -403,3 +554,15 @@ private struct AccountSheet: View {
         dismiss()
     }
 }
+
+#if DEBUG
+#Preview("Sheet — Nova conta banco") {
+    AccountSheet()
+        .previewSheet(width: 500, height: 490)
+}
+
+#Preview("Sheet — Novo cartão") {
+    AccountSheet()
+        .previewSheet(width: 500, height: 560)
+}
+#endif

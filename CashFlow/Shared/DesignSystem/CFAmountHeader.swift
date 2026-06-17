@@ -20,6 +20,9 @@ struct CFAmountHeader: View {
                 .textFieldStyle(.plain)
                 .focused(focusBinding)
                 .foregroundStyle(amountColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .frame(height: 54)
         }
     }
 

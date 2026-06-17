@@ -1,0 +1,7 @@
+// Opcional: inclua este arquivo no target CashFlow (Project → Info → Configurations)
+// quando tiver Apple Developer Program e quiser ativar iCloud.
+//
+// Xcode → Project → Info → Configurations → Debug/Release → Based on CloudKit-Sync
+// ou adicione manualmente em Active Compilation Conditions: CLOUDKIT_SYNC
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) CLOUDKIT_SYNC

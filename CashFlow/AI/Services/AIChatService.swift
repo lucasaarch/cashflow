@@ -28,11 +28,12 @@ final class AIChatService {
         in conversation: ChatConversation,
         transactions: [Transaction],
         accounts: [Account],
+        goals: [FinancialGoal] = [],
         monthlyIncomeCents: Int,
         context modelContext: ModelContext
-    ) async throws {
+    ) async throws -> UUID? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return nil }
 
         let userMessage = ChatMessage(role: .user, content: trimmed, conversation: conversation)
         conversation.messages.append(userMessage)
@@ -46,6 +47,7 @@ final class AIChatService {
         let snapshot = AIContextBuilder.financialSnapshot(
             transactions: transactions,
             accounts: accounts,
+            goals: goals,
             monthlyIncomeCents: monthlyIncomeCents
         )
 
@@ -81,5 +83,6 @@ final class AIChatService {
         }
 
         conversation.updatedAt = .now
+        return assistantMessage.id
     }
 }

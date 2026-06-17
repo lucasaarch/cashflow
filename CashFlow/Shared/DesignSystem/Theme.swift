@@ -44,7 +44,7 @@ enum CFTheme {
 
     static func paceColor(for state: PaceState) -> Color {
         switch state {
-        case .underspending: return Color.blue
+        case .underspending: return accent
         case .onTrack: return income
         case .warning: return warning
         case .danger: return danger
@@ -65,6 +65,27 @@ struct CFPageBackgroundModifier: ViewModifier {
     }
 }
 
+struct CFSheetBackgroundModifier: ViewModifier {
+    @FocusState private var sheetFocus: CFFocusTarget?
+
+    func body(content: Content) -> some View {
+        content
+            .presentationBackground(CFTheme.surfacePrimary)
+            .overlay(alignment: .topLeading) {
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
+                    .focusable()
+                    .focused($sheetFocus, equals: .focusSink)
+            }
+            .defaultFocus($sheetFocus, .focusSink)
+    }
+}
+
+private enum CFFocusTarget: Hashable {
+    case focusSink
+}
+
 extension View {
     func cfPageBackground() -> some View {
         modifier(CFPageBackgroundModifier())
@@ -72,7 +93,7 @@ extension View {
 
     /// Solid neutral background for sheets — avoids green tint from `.ultraThinMaterial` vibrancy.
     func cfSheetBackground() -> some View {
-        presentationBackground(CFTheme.surfacePrimary)
+        modifier(CFSheetBackgroundModifier())
     }
 
     /// Compact chip styling for inline pickers (category, date, icon).
