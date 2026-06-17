@@ -2,7 +2,7 @@ import SwiftUI
 
 struct IconPickerField: View {
     @Binding var symbolName: String
-    var tint: Color = .accentColor
+    var tint: Color = CFTheme.brandGreen
 
     @State private var showingPicker = false
 
@@ -21,18 +21,18 @@ struct IconPickerField: View {
                         .foregroundStyle(tint)
                 }
                 Text(displayName)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
+                    .font(CFTheme.body())
+                    .foregroundStyle(CFTheme.textPrimary)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CFTheme.textSecondary)
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.secondary.opacity(0.10))
+                    .fill(CFTheme.surfaceElevated.opacity(0.42))
             )
         }
         .buttonStyle(.plain)
@@ -95,28 +95,30 @@ private struct IconPickerGrid: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CFTheme.textSecondary)
             TextField("Buscar (mercado, uber, luz…)", text: $query)
                 .textFieldStyle(.plain)
+                .foregroundStyle(CFTheme.textPrimary)
             if !query.isEmpty {
                 Button {
                     query = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CFTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
+        .background(CFTheme.surfaceElevated.opacity(0.35))
     }
 
     private func section(title: String, items: [IconItem]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CFTheme.textSecondary)
                 .textCase(.uppercase)
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(items, id: \.name) { item in
@@ -135,11 +137,11 @@ private struct IconPickerGrid: View {
             Image(systemName: item.name)
                 .font(.system(size: 17, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(isSelected ? tint : .primary)
+                .foregroundStyle(isSelected ? tint : CFTheme.textPrimary)
                 .frame(width: 36, height: 36)
                 .background {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isSelected ? tint.opacity(0.22) : Color.secondary.opacity(0.10))
+                        .fill(isSelected ? tint.opacity(0.22) : CFTheme.surfaceElevated.opacity(0.40))
                         .overlay {
                             if isSelected {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)

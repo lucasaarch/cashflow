@@ -49,6 +49,7 @@ struct AddTransactionSheet: View {
         }
         .frame(width: 440, height: showingNote ? 500 : 440)
         .onAppear(perform: prefillDefaults)
+        .presentationBackground(.ultraThinMaterial)
     }
 
     // MARK: - Header
@@ -60,7 +61,7 @@ struct AddTransactionSheet: View {
                 .foregroundStyle(.secondary)
 
             CurrencyField(amount: $draft.amount, placeholder: "R$ 0,00")
-                .font(.system(size: 36, weight: .semibold, design: .rounded))
+                .font(.system(size: 42, weight: .semibold, design: .rounded))
                 .multilineTextAlignment(.center)
                 .textFieldStyle(.plain)
                 .focused($amountFocused)
@@ -82,36 +83,126 @@ struct AddTransactionSheet: View {
     }
 
     private var amountColor: Color {
-        draft.amount > 0 ? (draft.kind == .expense ? .red : .green) : .secondary
+        draft.kind == .expense ? CFTheme.textPrimary : CFTheme.income
     }
 
     // MARK: - Form
 
     private var formContent: some View {
-        Form {
-            Section {
-                LabeledContent("Categoria") {
-                    categoryPicker
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                fieldSection(title: "Detalhes") {
+                    labeledRow("Categoria") {
+                        categoryPicker
+                    }
+                    labeledRow("Conta") {
+                        accountPicker
+                    }
+                    labeledRow("Data") {
+                        DateField(date: $draft.occurredOn)
+                    }
                 }
-                LabeledContent("Conta") {
-                    accountPicker
-                }
-                LabeledContent("Data") {
-                    DateField(date: $draft.occurredOn)
+
+                if showingNote {
+                    fieldSection(title: "Nota") {
+                        TextField("Nota", text: $draft.note, axis: .vertical)
+                            .lineLimit(2...4)
+                            .textFieldStyle(.plain)
+                            .font(CFTheme.body())
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(CFTheme.surfaceElevated.opacity(0.45))
+                            )
+                    }
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .scrollIndicators(.never)
+    }
 
-            if showingNote {
-                Section {
-                    TextField("Nota", text: $draft.note, axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.plain)
-                }
+    private func fieldSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+                .textCase(.uppercase)
+            VStack(spacing: 8) {
+                content()
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
+
+    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(label)
+                .font(CFTheme.body())
+                .foregroundStyle(CFTheme.textSecondary)
+            Spacer(minLength: 8)
+            content()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(CFTheme.surfaceElevated.opacity(0.38))
+        )
+    }
+
+    @ViewBuilder
+    private var categorySelectionLabel: some View {
+        HStack(spacing: 6) {
+            if let category = draft.category {
+                Image(systemName: category.symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(draft.kind == .expense ? CFTheme.expense : CFTheme.income)
+                Text(category.name)
+                    .foregroundStyle(CFTheme.textPrimary)
+            } else {
+                Text("Selecionar")
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2)
+                .foregroundStyle(CFTheme.textTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private var accountSelectionLabel: some View {
+        HStack(spacing: 6) {
+            if let account = draft.account {
+                Image(systemName: account.symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color(hex: account.colorHex))
+                Text(account.name)
+                    .foregroundStyle(CFTheme.textPrimary)
+            } else {
+                Text("Selecionar")
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2)
+                .foregroundStyle(CFTheme.textTertiary)
+        }
+    }
+
+    private func pickerLabel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .font(CFTheme.body())
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(CFTheme.surfaceSecondary.opacity(0.8))
+            )
+    }
+
+    // MARK: - Pickers
 
     private var categoryPicker: some View {
         Menu {
@@ -123,20 +214,11 @@ struct AddTransactionSheet: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                if let category = draft.category {
-                    Image(systemName: category.symbolName)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(draft.kind == .expense ? Color.red : .green)
-                    Text(category.name)
-                } else {
-                    Text("Selecionar")
-                        .foregroundStyle(.secondary)
-                }
+            pickerLabel {
+                categorySelectionLabel
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
     }
 
     private var accountPicker: some View {
@@ -149,71 +231,62 @@ struct AddTransactionSheet: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                if let account = draft.account {
-                    Image(systemName: account.symbolName)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(Color(hex: account.colorHex))
-                    Text(account.name)
-                } else {
-                    Text("Selecionar")
-                        .foregroundStyle(.secondary)
-                }
+            pickerLabel {
+                accountSelectionLabel
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
     }
 
     // MARK: - Footer
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+            CFPillButton(
+                title: showingNote ? "Ocultar nota" : "Adicionar nota",
+                icon: showingNote ? "text.bubble.fill" : "text.bubble",
+                style: .ghost
+            ) {
+                withAnimation(CFMotion.snappy) {
                     showingNote.toggle()
                 }
-            } label: {
-                Label(showingNote ? "Ocultar nota" : "Adicionar nota",
-                      systemImage: showingNote ? "text.bubble.fill" : "text.bubble")
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 14))
             }
-            .buttonStyle(.borderless)
             .help(showingNote ? "Ocultar nota" : "Adicionar nota")
 
-            if isEditing {
-                Button(role: .destructive) {
-                    deleteEditing()
-                } label: {
-                    Label("Excluir", systemImage: "trash")
-                        .labelStyle(.iconOnly)
+            if showingNote {
+                CFPillButton(title: "Limpar", icon: "xmark.circle", style: .ghost) {
+                    draft.note = ""
                 }
-                .buttonStyle(.borderless)
+                .help("Limpar nota")
+            }
+
+            if isEditing {
+                CFPillButton(title: "Excluir", icon: "trash", style: .destructive) {
+                    deleteEditing()
+                }
                 .help("Excluir lançamento")
             }
 
             Spacer()
 
-            Button("Cancelar") { dismiss() }
-                .keyboardShortcut(.cancelAction)
+            CFPillButton(title: "Cancelar", style: .ghost) {
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
 
             if !isEditing {
-                Button {
+                CFPillButton(title: "Salvar e adicionar", icon: "plus", style: .ghost) {
                     save(closeAfter: false)
-                } label: {
-                    Text("Salvar e adicionar")
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(!draft.isValid)
+                .sheetButtonDisabled(!draft.isValid)
             }
 
-            Button("Salvar") {
+            CFPillButton(title: "Salvar", icon: "checkmark", style: .primary) {
                 save(closeAfter: true)
             }
-            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(!draft.isValid)
+            .sheetButtonDisabled(!draft.isValid)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -287,6 +360,13 @@ struct AddTransactionSheet: View {
             modelContext.delete(editing)
         }
         dismiss()
+    }
+}
+
+private extension View {
+    func sheetButtonDisabled(_ disabled: Bool) -> some View {
+        opacity(disabled ? 0.5 : 1)
+            .allowsHitTesting(!disabled)
     }
 }
 

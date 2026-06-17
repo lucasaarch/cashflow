@@ -174,7 +174,7 @@ private struct CategorySheet: View {
     private var hasUsage: Bool { (editing?.transactions.count ?? 0) > 0 }
 
     private var accentColor: Color {
-        kind == .expense ? .red : .green
+        kind == .expense ? CFTheme.expense : CFTheme.income
     }
 
     var body: some View {
@@ -186,19 +186,16 @@ private struct CategorySheet: View {
             footer
         }
         .frame(width: 480, height: 460)
+        .presentationBackground(.ultraThinMaterial)
     }
 
     private var hero: some View {
         VStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(accentColor.opacity(0.18))
-                    .frame(width: 64, height: 64)
-                Image(systemName: symbolName.isEmpty ? "tag.fill" : symbolName)
-                    .font(.system(size: 26, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(accentColor)
-            }
+            CFIconBadge(
+                symbolName: symbolName.isEmpty ? "tag.fill" : symbolName,
+                tint: accentColor,
+                size: 64
+            )
             .shadow(color: accentColor.opacity(0.18), radius: 12, x: 0, y: 6)
 
             VStack(spacing: 3) {
@@ -217,51 +214,87 @@ private struct CategorySheet: View {
     }
 
     private var formContent: some View {
-        Form {
-            Section {
-                TextField("Nome", text: $name, prompt: Text("Mercado, Delivery, Salário…"))
-                Picker("Tipo", selection: $kind) {
-                    Text("Despesa").tag(CategoryKind.expense)
-                    Text("Receita").tag(CategoryKind.income)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                section(title: "Identificação") {
+                    CFInputField(
+                        label: "Nome",
+                        text: $name,
+                        placeholder: "Mercado, Delivery, Salário…"
+                    )
+
+                    labeledRow("Tipo") {
+                        Picker("Tipo", selection: $kind) {
+                            Text("Despesa").tag(CategoryKind.expense)
+                            Text("Receita").tag(CategoryKind.income)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .disabled(hasUsage)
+                    }
                 }
-                .pickerStyle(.menu)
-                .disabled(hasUsage)
-            } footer: {
+
                 if hasUsage {
                     Text("Tipo bloqueado: há lançamentos usando essa categoria. Arquive e crie uma nova se precisar mudar.")
-                        .foregroundStyle(.secondary)
+                        .font(CFTheme.caption())
+                        .foregroundStyle(CFTheme.textSecondary)
                 }
-            }
 
-            Section("Aparência") {
-                LabeledContent("Ícone") {
-                    IconPickerField(symbolName: $symbolName, tint: accentColor)
+                section(title: "Aparência") {
+                    labeledRow("Ícone") {
+                        IconPickerField(symbolName: $symbolName, tint: accentColor)
+                    }
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        .scrollIndicators(.never)
+    }
+
+    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+                .textCase(.uppercase)
+            content()
+        }
+    }
+
+    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(CFTheme.body())
+                .foregroundStyle(CFTheme.textSecondary)
+            Spacer(minLength: 8)
+            content()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(CFTheme.surfaceElevated.opacity(0.38))
+        )
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 10) {
             if isEditing {
-                Button(role: .destructive) {
+                CFPillButton(title: "Arquivar", icon: "archivebox", style: .destructive) {
                     archive()
-                } label: {
-                    Label("Arquivar", systemImage: "archivebox")
                 }
             }
             Spacer()
-            Button("Cancelar") { dismiss() }
+            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button("Salvar") {
+            CFPillButton(title: "Salvar", icon: "checkmark", style: .primary) {
                 save()
                 dismiss()
             }
-            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .opacity(name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+            .allowsHitTesting(!name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

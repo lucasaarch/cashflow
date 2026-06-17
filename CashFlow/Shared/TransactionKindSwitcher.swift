@@ -6,15 +6,15 @@ struct TransactionKindSwitcher: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            pill(for: .expense, label: "Despesa", icon: "arrow.up.right", tint: .red)
-            pill(for: .income, label: "Receita", icon: "arrow.down.left", tint: .green)
+            pill(for: .expense, label: "Despesa", icon: "arrow.up.right", tint: CFTheme.expense)
+            pill(for: .income, label: "Receita", icon: "arrow.down.left", tint: CFTheme.income)
         }
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 11)
                 .fill(Color.secondary.opacity(0.12))
         )
-        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: kind)
+        .animation(CFMotion.snappy, value: kind)
     }
 
     @ViewBuilder

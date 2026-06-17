@@ -5,10 +5,25 @@ struct CurrencyField: View {
     var placeholder: String = "R$ 0,00"
 
     @State private var rawText: String = ""
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         TextField(placeholder, text: $rawText)
+#if os(iOS)
             .keyboardType(.decimalPad)
+#endif
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(CFTheme.surfaceElevated.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isFocused ? CFTheme.brandGreen : CFTheme.textTertiary.opacity(0.22), lineWidth: isFocused ? 1.5 : 0.5)
+            )
+            .focused($isFocused)
+            .animation(CFMotion.snappy, value: isFocused)
             .onAppear {
                 if amount > 0 {
                     rawText = formatted(amount)
