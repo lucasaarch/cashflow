@@ -12,12 +12,16 @@ import SwiftData
 struct CashFlowApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Transaction.self,
+            Category.self,
+            Account.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            SeedData.seedIfNeeded(context: container.mainContext)
+            return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -25,8 +29,15 @@ struct CashFlowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootSidebarView()
+                .frame(minWidth: 900, minHeight: 600)
         }
         .modelContainer(sharedModelContainer)
+        .commands {
+            SidebarCommands()
+        }
+#if os(macOS)
+        .windowResizability(.contentSize)
+#endif
     }
 }

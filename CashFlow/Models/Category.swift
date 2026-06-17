@@ -1,0 +1,44 @@
+import Foundation
+import SwiftData
+
+enum CategoryKind: String, Codable, CaseIterable {
+    case expense
+    case income
+}
+
+@Model
+final class Category {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var symbolName: String
+    var kindRaw: String
+    var sortOrder: Int
+    var isArchived: Bool
+    var seeded: Bool
+
+    @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
+    var transactions: [Transaction] = []
+
+    var kind: CategoryKind {
+        get { CategoryKind(rawValue: kindRaw) ?? .expense }
+        set { kindRaw = newValue.rawValue }
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        symbolName: String,
+        kind: CategoryKind,
+        sortOrder: Int,
+        isArchived: Bool = false,
+        seeded: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.symbolName = symbolName
+        self.kindRaw = kind.rawValue
+        self.sortOrder = sortOrder
+        self.isArchived = isArchived
+        self.seeded = seeded
+    }
+}
