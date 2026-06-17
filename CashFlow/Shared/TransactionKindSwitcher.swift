@@ -12,7 +12,7 @@ struct TransactionKindSwitcher: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 11)
-                .fill(Color.secondary.opacity(0.12))
+                .fill(CFTheme.textTertiary.opacity(0.12))
         )
         .animation(CFMotion.snappy, value: kind)
     }
@@ -42,7 +42,7 @@ struct TransactionKindSwitcher: View {
                         .matchedGeometryEffect(id: "kindPill", in: namespace)
                 }
             }
-            .foregroundStyle(isSelected ? tint : .secondary)
+            .foregroundStyle(isSelected ? tint : CFTheme.textSecondary)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -58,7 +58,7 @@ struct AddTransactionSheet: View {
         VStack(spacing: 12) {
             Text(isEditing ? "Editar lançamento" : "Novo lançamento")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CFTheme.textSecondary)
 
             CurrencyField(amount: $draft.amount, placeholder: "R$ 0,00")
                 .font(.system(size: 42, weight: .semibold, design: .rounded))

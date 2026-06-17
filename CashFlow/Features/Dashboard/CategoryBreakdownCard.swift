@@ -33,9 +33,9 @@ struct CategoryBreakdownCard: View {
         HStack {
             Image(systemName: "tray")
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CFTheme.textSecondary)
             Text("Sem despesas neste mês ainda.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CFTheme.textSecondary)
             Spacer()
         }
         .font(.callout)

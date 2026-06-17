@@ -201,11 +201,11 @@ private struct CategorySheet: View {
             VStack(spacing: 3) {
                 Text(name.isEmpty ? (isEditing ? "Sem nome" : "Nova categoria") : name)
                     .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(name.isEmpty ? Color.secondary : .primary)
+                    .foregroundStyle(name.isEmpty ? CFTheme.textSecondary : CFTheme.textPrimary)
                     .lineLimit(1)
                 Text(kind == .expense ? "Despesa" : "Receita")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CFTheme.textSecondary)
             }
         }
         .padding(.top, 26)

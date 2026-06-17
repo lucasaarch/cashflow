@@ -11,9 +11,9 @@ struct DateField: View {
             HStack(spacing: 6) {
                 Image(systemName: "calendar")
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(CFTheme.brandGreen)
                 Text(displayString)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(CFTheme.textPrimary)
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
@@ -21,7 +21,7 @@ struct DateField: View {
         .buttonStyle(.plain)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.secondary.opacity(0.12))
+                .fill(CFTheme.textTertiary.opacity(0.12))
         )
         .popover(isPresented: $showingPopover, arrowEdge: .top) {
             VStack(spacing: 12) {
@@ -62,9 +62,9 @@ struct DateField: View {
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.accentColor.opacity(0.22) : Color.secondary.opacity(0.12))
+                        .fill(isSelected ? CFTheme.brandGreen.opacity(0.22) : CFTheme.textTertiary.opacity(0.12))
                 )
-                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                .foregroundStyle(isSelected ? CFTheme.brandGreen : CFTheme.textPrimary)
         }
         .buttonStyle(.plain)
     }

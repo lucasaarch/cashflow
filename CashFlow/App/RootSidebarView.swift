@@ -37,6 +37,8 @@ struct RootSidebarView: View {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
+        .tint(CFTheme.brandGreen)
+        .background(CFTheme.surfacePrimary)
     }
 
     @ViewBuilder

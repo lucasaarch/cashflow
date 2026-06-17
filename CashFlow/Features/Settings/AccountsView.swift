@@ -282,11 +282,11 @@ private struct AccountSheet: View {
             VStack(spacing: 3) {
                 Text(name.isEmpty ? (isEditing ? "Sem nome" : "Nova conta") : name)
                     .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(name.isEmpty ? Color.secondary : .primary)
+                    .foregroundStyle(name.isEmpty ? CFTheme.textSecondary : CFTheme.textPrimary)
                     .lineLimit(1)
                 Text(heroSubtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CFTheme.textSecondary)
                     .monospacedDigit()
             }
         }
