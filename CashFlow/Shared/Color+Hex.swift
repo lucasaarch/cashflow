@@ -30,4 +30,21 @@ extension Color {
 
         self = Color(red: r, green: g, blue: b, opacity: a)
     }
+
+    var hexString: String {
+#if os(macOS)
+        let resolved = NSColor(self).usingColorSpace(.sRGB) ?? .gray
+        let r = Int(round(resolved.redComponent * 255))
+        let g = Int(round(resolved.greenComponent * 255))
+        let b = Int(round(resolved.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+#else
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        let ri = Int(round(r * 255))
+        let gi = Int(round(g * 255))
+        let bi = Int(round(b * 255))
+        return String(format: "#%02X%02X%02X", ri, gi, bi)
+#endif
+    }
 }
