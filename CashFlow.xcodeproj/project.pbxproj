@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		A10000082FE2050900348C3A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 397676662FE2050900348C3A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3976766D2FE2050900348C3A;
+			remoteInfo = CashFlow;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		3976766E2FE2050900348C3A /* CashFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CashFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000012FE2050900348C3A /* CashFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CashFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = CashFlow;
 			sourceTree = "<group>";
 		};
+		A10000022FE2050900348C3A /* CashFlowTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CashFlowTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3976766B2FE2050900348C3A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000052FE2050900348C3A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				397676702FE2050900348C3A /* CashFlow */,
+				A10000022FE2050900348C3A /* CashFlowTests */,
 				3976766F2FE2050900348C3A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				3976766E2FE2050900348C3A /* CashFlow.app */,
+				A10000012FE2050900348C3A /* CashFlowTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = 3976766E2FE2050900348C3A /* CashFlow.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A10000032FE2050900348C3A /* CashFlowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000092FE2050900348C3A /* Build configuration list for PBXNativeTarget "CashFlowTests" */;
+			buildPhases = (
+				A10000042FE2050900348C3A /* Sources */,
+				A10000052FE2050900348C3A /* Frameworks */,
+				A10000062FE2050900348C3A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A100000C2FE2050900348C3A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000022FE2050900348C3A /* CashFlowTests */,
+			);
+			name = CashFlowTests;
+			packageProductDependencies = (
+			);
+			productName = CashFlowTests;
+			productReference = A10000012FE2050900348C3A /* CashFlowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					3976766D2FE2050900348C3A = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					A10000032FE2050900348C3A = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 3976766D2FE2050900348C3A;
 					};
 				};
 			};
@@ -100,12 +152,20 @@
 			projectRoot = "";
 			targets = (
 				3976766D2FE2050900348C3A /* CashFlow */,
+				A10000032FE2050900348C3A /* CashFlowTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3976766C2FE2050900348C3A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000062FE2050900348C3A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +182,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000042FE2050900348C3A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A100000C2FE2050900348C3A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3976766D2FE2050900348C3A /* CashFlow */;
+			targetProxy = A10000082FE2050900348C3A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		397676792FE2050A00348C3A /* Debug */ = {
@@ -249,7 +324,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -281,7 +356,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -309,6 +384,46 @@
 			};
 			name = Release;
 		};
+		A100000A2FE2050900348C3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DTL6JV77RD;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lucasarch.CashFlowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CashFlow.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CashFlow";
+			};
+			name = Debug;
+		};
+		A100000B2FE2050900348C3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DTL6JV77RD;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lucasarch.CashFlowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CashFlow.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CashFlow";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -326,6 +441,15 @@
 			buildConfigurations = (
 				3976767C2FE2050A00348C3A /* Debug */,
 				3976767D2FE2050A00348C3A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000092FE2050900348C3A /* Build configuration list for PBXNativeTarget "CashFlowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000A2FE2050900348C3A /* Debug */,
+				A100000B2FE2050900348C3A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
