@@ -48,107 +48,108 @@ struct CategoriesView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("Nenhuma categoria", systemImage: "tag")
-        } description: {
-            Text("Crie categorias para classificar seus gastos e receitas (ex: Mercado, Delivery, Salário).")
-        } actions: {
-            Button {
-                showingAdd = true
-            } label: {
-                Label("Criar primeira categoria", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
+        CFEmptyState(
+            symbol: "tag",
+            title: "Nenhuma categoria",
+            message: "Crie categorias para classificar seus gastos e receitas (ex: Mercado, Delivery, Salário).",
+            actionTitle: "Criar primeira categoria"
+        ) {
+            showingAdd = true
         }
     }
 
     private var categoryList: some View {
-        List {
-            if !expenseCategories.isEmpty {
-                Section("Despesas") {
-                    ForEach(expenseCategories) { category in
-                        categoryRow(category, tint: .red)
-                    }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                if !expenseCategories.isEmpty {
+                    categorySection(title: "Despesas", items: expenseCategories, tint: CFTheme.expense)
+                }
+
+                if !incomeCategories.isEmpty {
+                    categorySection(title: "Receitas", items: incomeCategories, tint: CFTheme.income)
+                }
+
+                if !archivedCategories.isEmpty {
+                    archivedSection
                 }
             }
+            .padding(20)
+        }
+        .cfPageBackground()
+    }
 
-            if !incomeCategories.isEmpty {
-                Section("Receitas") {
-                    ForEach(incomeCategories) { category in
-                        categoryRow(category, tint: .green)
-                    }
+    private func categorySection(title: String, items: [Category], tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 2)
+
+            ForEach(items) { category in
+                CFHoverRow {
+                    categoryRowContent(category, tint: tint)
                 }
-            }
-
-            if !archivedCategories.isEmpty {
-                Section("Arquivadas") {
-                    ForEach(archivedCategories) { category in
-                        HStack(spacing: 12) {
-                            categoryIcon(category, tint: .secondary)
-                            Text(category.name)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Restaurar") {
-                                category.isArchived = false
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    editingCategory = category
+                }
+                .contextMenu {
+                    Button {
+                        editingCategory = category
+                    } label: {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        category.isArchived = true
+                    } label: {
+                        Label("Arquivar", systemImage: "archivebox")
                     }
                 }
             }
         }
-        .listStyle(.inset)
     }
 
-    @ViewBuilder
-    private func categoryRow(_ category: Category, tint: Color) -> some View {
+    private var archivedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Arquivadas")
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 2)
+
+            ForEach(archivedCategories) { category in
+                CFHoverRow {
+                    HStack(spacing: 12) {
+                        CFIconBadge(symbolName: category.symbolName, tint: CFTheme.textSecondary, size: 28)
+                        Text(category.name)
+                            .font(CFTheme.body())
+                            .foregroundStyle(CFTheme.textSecondary)
+                        Spacer()
+                        Button("Restaurar") {
+                            category.isArchived = false
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+        }
+    }
+
+    private func categoryRowContent(_ category: Category, tint: Color) -> some View {
         HStack(spacing: 12) {
-            categoryIcon(category, tint: tint)
+            CFIconBadge(symbolName: category.symbolName, tint: tint, size: 30)
             Text(category.name)
-                .foregroundStyle(.primary)
+                .font(CFTheme.body())
+                .foregroundStyle(CFTheme.textPrimary)
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            editingCategory = category
-        }
-        .contextMenu {
-            Button {
-                editingCategory = category
-            } label: {
-                Label("Editar", systemImage: "pencil")
-            }
-            Button(role: .destructive) {
-                category.isArchived = true
-            } label: {
-                Label("Arquivar", systemImage: "archivebox")
-            }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                category.isArchived = true
-            } label: {
-                Label("Arquivar", systemImage: "archivebox")
-            }
+                .foregroundStyle(CFTheme.textTertiary)
         }
     }
 
-    private func categoryIcon(_ category: Category, tint: Color) -> some View {
-        ZStack {
-            Circle()
-                .fill(tint.opacity(0.16))
-                .frame(width: 28, height: 28)
-            Image(systemName: category.symbolName)
-                .font(.system(size: 13, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(tint)
-        }
-    }
 }
 
 private struct CategorySheet: View {
@@ -172,65 +173,98 @@ private struct CategorySheet: View {
     private var isEditing: Bool { editing != nil }
     private var hasUsage: Bool { (editing?.transactions.count ?? 0) > 0 }
 
+    private var accentColor: Color {
+        kind == .expense ? .red : .green
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                Section {
-                    LabeledContent("Nome") {
-                        TextField("Mercado, Delivery…", text: $name)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 220)
-                    }
-                    LabeledContent("Tipo") {
-                        Picker("", selection: $kind) {
-                            Text("Despesa").tag(CategoryKind.expense)
-                            Text("Receita").tag(CategoryKind.income)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(maxWidth: 200)
-                        .disabled(hasUsage)
-                    }
-                    if hasUsage {
-                        Text("Tipo não pode ser trocado porque há lançamentos usando essa categoria. Arquive e crie uma nova se precisar mudar.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Ícone") {
-                    LabeledContent("Ícone") {
-                        IconPickerField(symbolName: $symbolName,
-                                        tint: kind == .expense ? .red : .green)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-
+            hero
             Divider()
-
-            HStack {
-                if isEditing {
-                    Button(role: .destructive) {
-                        archive()
-                    } label: {
-                        Label("Arquivar", systemImage: "archivebox")
-                    }
-                }
-                Spacer()
-                Button("Cancelar") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Salvar") {
-                    save()
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            .padding(12)
+            formContent
+            Divider()
+            footer
         }
-        .frame(width: 460, height: 360)
+        .frame(width: 480, height: 460)
+    }
+
+    private var hero: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(accentColor.opacity(0.18))
+                    .frame(width: 64, height: 64)
+                Image(systemName: symbolName.isEmpty ? "tag.fill" : symbolName)
+                    .font(.system(size: 26, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(accentColor)
+            }
+            .shadow(color: accentColor.opacity(0.18), radius: 12, x: 0, y: 6)
+
+            VStack(spacing: 3) {
+                Text(name.isEmpty ? (isEditing ? "Sem nome" : "Nova categoria") : name)
+                    .font(.system(.title3, design: .rounded).weight(.semibold))
+                    .foregroundStyle(name.isEmpty ? Color.secondary : .primary)
+                    .lineLimit(1)
+                Text(kind == .expense ? "Despesa" : "Receita")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 26)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var formContent: some View {
+        Form {
+            Section {
+                TextField("Nome", text: $name, prompt: Text("Mercado, Delivery, Salário…"))
+                Picker("Tipo", selection: $kind) {
+                    Text("Despesa").tag(CategoryKind.expense)
+                    Text("Receita").tag(CategoryKind.income)
+                }
+                .pickerStyle(.menu)
+                .disabled(hasUsage)
+            } footer: {
+                if hasUsage {
+                    Text("Tipo bloqueado: há lançamentos usando essa categoria. Arquive e crie uma nova se precisar mudar.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Aparência") {
+                LabeledContent("Ícone") {
+                    IconPickerField(symbolName: $symbolName, tint: accentColor)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+
+    private var footer: some View {
+        HStack {
+            if isEditing {
+                Button(role: .destructive) {
+                    archive()
+                } label: {
+                    Label("Arquivar", systemImage: "archivebox")
+                }
+            }
+            Spacer()
+            Button("Cancelar") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Salvar") {
+                save()
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private func save() {
