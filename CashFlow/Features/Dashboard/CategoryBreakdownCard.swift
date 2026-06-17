@@ -13,10 +13,10 @@ struct CategoryBreakdownCard: View {
     }
 
     var body: some View {
-        DashboardCard(title: "Maiores dores",
-                      subtitle: aggregates.isEmpty
-                        ? "Cadastre alguns gastos pra ver onde está vazando"
-                        : "Categorias que mais consumiram seu dinheiro este mês") {
+        CFGlassCard(title: "Maiores dores",
+                    subtitle: aggregates.isEmpty
+                      ? "Cadastre alguns gastos pra ver onde está vazando"
+                      : "Categorias que mais consumiram seu dinheiro este mês") {
             if aggregates.isEmpty {
                 emptyState
             } else {
@@ -46,45 +46,50 @@ struct CategoryBreakdownCard: View {
     private func row(_ item: MonthSummary.CategoryAggregate, isTop: Bool) -> some View {
         let ratio = ratioOfMax(item.total)
         let share = ratioOfTotal(item.total)
-        let tint: Color = isTop ? .red : .accentColor
+        let tint: Color = CFTheme.expense
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(tint.opacity(0.16))
-                        .frame(width: 26, height: 26)
-                    Image(systemName: item.category.symbolName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(tint)
-                }
+                CFIconBadge(
+                    symbolName: item.category.symbolName,
+                    tint: tint,
+                    size: 26
+                )
 
                 Text(item.category.name)
-                    .font(.callout)
+                    .font(.callout.weight(isTop ? .semibold : .regular))
+                    .foregroundStyle(CFTheme.textPrimary)
+
+                if isTop {
+                    Text("Top 1")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CFTheme.expense)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(CFTheme.expense.opacity(0.14))
+                        )
+                }
 
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 0) {
-                    Text(item.total.brl)
-                        .font(.callout.monospacedDigit().weight(.medium))
+                    CFAnimatedAmount(
+                        amount: item.total,
+                        font: .callout.monospacedDigit().weight(.medium),
+                        color: CFTheme.textPrimary
+                    )
                     Text("\(item.count) \(item.count == 1 ? "lançamento" : "lançamentos") · \(percentFormatter.string(from: NSNumber(value: share)) ?? "")")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CFTheme.textSecondary)
                 }
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.12))
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(tint.opacity(0.7))
-                        .frame(width: max(4, geo.size.width * ratio))
-                }
-            }
+            CFProgressBar(progress: ratio, color: tint.opacity(isTop ? 1.0 : 0.78), height: 6)
             .frame(height: 6)
         }
+        .padding(.vertical, 2)
     }
 
     private func ratioOfMax(_ value: Decimal) -> CGFloat {

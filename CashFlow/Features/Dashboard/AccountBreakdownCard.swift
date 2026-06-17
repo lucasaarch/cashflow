@@ -4,14 +4,14 @@ struct AccountBreakdownCard: View {
     let aggregates: [MonthSummary.AccountAggregate]
 
     var body: some View {
-        DashboardCard(title: "Por conta", subtitle: "Distribuição dos gastos por forma de pagamento") {
+        CFGlassCard(title: "Por conta", subtitle: "Distribuição dos gastos por forma de pagamento") {
             if aggregates.isEmpty {
                 HStack {
                     Image(systemName: "wallet.pass")
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CFTheme.textSecondary)
                     Text("Nenhum gasto registrado.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CFTheme.textSecondary)
                     Spacer()
                 }
                 .font(.callout)
@@ -28,33 +28,33 @@ struct AccountBreakdownCard: View {
 
     @ViewBuilder
     private func row(_ item: MonthSummary.AccountAggregate) -> some View {
-        let isDebt = item.account.kind == .externalDebt
+        let isCard = item.account.kind == .creditCard
         let tint = Color(hex: item.account.colorHex)
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .frame(width: 32, height: 32)
-                Image(systemName: item.account.symbolName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(tint)
-            }
+            CFIconBadge(symbolName: item.account.symbolName, tint: tint, size: 32, cornerRadius: 7)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.account.name)
                     .font(.callout)
-                Text(isDebt ? "A pagar para ela" : "\(item.count) \(item.count == 1 ? "lançamento" : "lançamentos")")
+                    .foregroundStyle(CFTheme.textPrimary)
+                Text(captionLabel(isCard: isCard, count: item.count))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CFTheme.textSecondary)
             }
 
             Spacer()
 
-            Text(item.total.brl)
-                .font(.callout.monospacedDigit().weight(.medium))
-                .foregroundStyle(isDebt ? .pink : .primary)
+            CFAnimatedAmount(
+                amount: item.total,
+                font: .callout.monospacedDigit().weight(.medium),
+                color: isCard ? CFTheme.debt : CFTheme.textPrimary
+            )
         }
         .padding(.vertical, 4)
+    }
+
+    private func captionLabel(isCard: Bool, count: Int) -> String {
+        let suffix = "\(count) \(count == 1 ? "lançamento" : "lançamentos")"
+        return isCard ? "Cartão · \(suffix)" : suffix
     }
 }

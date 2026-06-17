@@ -12,6 +12,7 @@ struct MonthDashboardView: View {
     @AppStorage(UserDefaultsKeys.monthlyIncomeCents) private var monthlyIncomeCents: Int = 0
     @State private var referenceDate: Date = .now
     @State private var editingIncome = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: MonthSummary {
         MonthSummary(
@@ -49,14 +50,15 @@ struct MonthDashboardView: View {
                 }
             }
         }
+        .cfPageBackground()
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("Comece criando uma conta", systemImage: "wallet.pass")
-        } description: {
-            Text("Cadastre suas contas com o saldo atual de cada uma. Depois é só registrar entradas e saídas pra ver onde o dinheiro está indo.")
-        }
+        CFEmptyState(
+            symbol: "wallet.pass",
+            title: "Comece criando uma conta",
+            message: "Cadastre suas contas com o saldo atual de cada uma. Depois e so registrar entradas e saidas pra ver onde o dinheiro esta indo."
+        )
     }
 
     private var dashboardScroll: some View {
@@ -69,18 +71,50 @@ struct MonthDashboardView: View {
                     editingIncome: $editingIncome,
                     monthlyIncomeCents: $monthlyIncomeCents
                 )
+                .cfStaggerAppear(index: 0)
+                .id(referenceDate)
+
                 if monthlyIncomeCents > 0 {
-                    PaceCard(summary: summary)
+                    ViewThatFits {
+                        HStack(alignment: .top, spacing: 16) {
+                            PaceCard(summary: summary)
+                                .frame(maxWidth: .infinity)
+                            CategoryBreakdownCard(
+                                aggregates: summary.expensesByCategory,
+                                totalExpense: summary.totalExpense
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        VStack(spacing: 16) {
+                            PaceCard(summary: summary)
+                            CategoryBreakdownCard(
+                                aggregates: summary.expensesByCategory,
+                                totalExpense: summary.totalExpense
+                            )
+                        }
+                    }
+                    .cfStaggerAppear(index: 1)
+                } else {
+                    CategoryBreakdownCard(
+                        aggregates: summary.expensesByCategory,
+                        totalExpense: summary.totalExpense
+                    )
+                    .cfStaggerAppear(index: 1)
                 }
-                CategoryBreakdownCard(aggregates: summary.expensesByCategory,
-                                      totalExpense: summary.totalExpense)
+
                 AccountBreakdownCard(aggregates: summary.expensesByAccount)
+                    .cfStaggerAppear(index: 2)
             }
             .padding(20)
-            .frame(maxWidth: 820)
+            .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .offset(y: 8)),
+                removal: .opacity
+            ))
+            .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
         }
-        .background(Color(.windowBackgroundColor).opacity(0.4).ignoresSafeArea())
+        .cfPageBackground()
     }
 
     private var monthNavigator: some View {
@@ -89,22 +123,34 @@ struct MonthDashboardView: View {
                 shiftMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 22, height: 22)
             }
+            .buttonStyle(.plain)
             .help("Mês anterior")
 
             Text(monthLabel)
-                .font(.callout.weight(.medium))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(CFTheme.textPrimary)
                 .frame(minWidth: 130)
                 .multilineTextAlignment(.center)
+                .contentTransition(reduceMotion ? .identity : .numericText())
 
             Button {
                 shiftMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 22, height: 22)
             }
+            .buttonStyle(.plain)
             .disabled(isCurrentMonth)
             .help("Mês seguinte")
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(CFTheme.textTertiary.opacity(0.1)))
+        .animation(reduceMotion ? nil : CFMotion.snappy, value: referenceDate)
     }
 
     private var monthLabel: String {
@@ -132,45 +178,50 @@ private struct HeroKPIsCard: View {
     @Binding var monthlyIncomeCents: Int
 
     var body: some View {
-        DashboardCard {
+        CFGlassCard(padding: 24) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Saldo atual")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(CFTheme.body())
+                        .foregroundStyle(CFTheme.textSecondary)
                     Spacer()
-                    Button {
+                    CFPillButton(
+                        title: monthlyIncomeCents == 0 ? "Definir orçamento" : "Editar orçamento",
+                        icon: monthlyIncomeCents == 0 ? "plus.circle" : "pencil",
+                        style: .ghost
+                    ) {
                         editingIncome.toggle()
-                    } label: {
-                        Label(monthlyIncomeCents == 0 ? "Definir orçamento" : "Editar orçamento",
-                              systemImage: monthlyIncomeCents == 0 ? "plus.circle" : "pencil")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption)
                     }
-                    .buttonStyle(.borderless)
                     .help("Orçamento mensal")
                 }
 
-                Text(liquidBalance.brl)
-                    .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(liquidBalance >= 0 ? Color.primary : Color.red)
+                CFAnimatedAmount(
+                    amount: liquidBalance,
+                    color: liquidBalance >= 0 ? CFTheme.textPrimary : CFTheme.danger
+                )
 
                 HStack(spacing: 14) {
-                    kpiTile(label: "Entrou no mês",
-                            value: summary.totalIncome,
-                            icon: "arrow.down.left",
-                            tint: .green)
+                    CFMetricTile(
+                        label: "Entrou no mês",
+                        amount: summary.totalIncome,
+                        icon: "arrow.down.left",
+                        tint: CFTheme.income
+                    )
                     Divider().frame(height: 36)
-                    kpiTile(label: "Saiu no mês",
-                            value: summary.totalExpense,
-                            icon: "arrow.up.right",
-                            tint: .red)
+                    CFMetricTile(
+                        label: "Saiu no mês",
+                        amount: summary.totalExpense,
+                        icon: "arrow.up.right",
+                        tint: CFTheme.expense
+                    )
                     if debtBalance > 0 {
                         Divider().frame(height: 36)
-                        kpiTile(label: "Devo pra ela",
-                                value: debtBalance,
-                                icon: "heart.fill",
-                                tint: .pink)
+                        CFMetricTile(
+                            label: "Em cartões",
+                            amount: debtBalance,
+                            icon: "creditcard.fill",
+                            tint: CFTheme.debt
+                        )
                     }
                 }
             }
@@ -179,26 +230,6 @@ private struct HeroKPIsCard: View {
             MonthlyIncomeEditor(cents: $monthlyIncomeCents)
                 .frame(width: 300)
         }
-    }
-
-    private func kpiTile(label: String, value: Decimal, icon: String, tint: Color) -> some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(tint.opacity(0.16)).frame(width: 30, height: 30)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(tint)
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value.brl)
-                    .font(.callout.monospacedDigit().weight(.medium))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -210,12 +241,25 @@ private struct MonthlyIncomeEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Orçamento mensal")
                 .font(.headline)
-            Text("Quanto você espera ter por mês. Usado pra calcular ritmo de gastos.")
+            Text("Quanto você espera ter disponível este mês (salário + outras entradas previstas).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("O CashFlow compara com o que você já gastou e mostra o card de Ritmo, indicando se vai sobrar dinheiro até o fim do mês ou se está gastando rápido demais.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             CurrencyField(amount: $amount, placeholder: "R$ 0,00")
                 .font(.title3)
                 .textFieldStyle(.roundedBorder)
+            if cents > 0 {
+                Button(role: .destructive) {
+                    amount = 0
+                    cents = 0
+                } label: {
+                    Label("Remover orçamento", systemImage: "xmark.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
         }
         .padding(16)
         .onAppear { amount = Decimal(cents) / 100 }
@@ -229,17 +273,26 @@ private struct MonthlyIncomeEditor: View {
 
 private struct PaceCard: View {
     let summary: MonthSummary
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
 
     var body: some View {
-        DashboardCard(title: "Ritmo do mês", subtitle: subtitle) {
+        CFGlassCard(title: "Ritmo do mês", subtitle: subtitle) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: summary.paceState.symbol)
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(paceColor)
+                        .foregroundStyle(CFTheme.paceColor(for: summary.paceState))
+                        .scaleEffect(summary.paceState == .danger ? (pulse ? 1.08 : 1) : 1)
                     Text(summary.paceState.label)
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(paceColor)
+                        .foregroundStyle(CFTheme.paceColor(for: summary.paceState))
+                }
+                .onAppear {
+                    updatePulse(for: summary.paceState)
+                }
+                .onChange(of: summary.paceState) { _, newValue in
+                    updatePulse(for: newValue)
                 }
 
                 doubleBar
@@ -249,35 +302,21 @@ private struct PaceCard: View {
     }
 
     private var doubleBar: some View {
-        GeometryReader { geo in
-            VStack(spacing: 6) {
-                bar(progress: summary.dayProgress, color: .secondary.opacity(0.45), width: geo.size.width)
-                bar(progress: min(summary.spentRatio, 1.5), color: paceColor, width: geo.size.width)
-            }
+        VStack(spacing: 8) {
+            CFProgressBar(progress: summary.dayProgress, color: CFTheme.textSecondary.opacity(0.45), height: 8)
+            CFProgressBar(progress: min(summary.spentRatio, 1.5), color: CFTheme.paceColor(for: summary.paceState), height: 8)
         }
-        .frame(height: 22)
-    }
-
-    private func bar(progress: Double, color: Color, width: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.secondary.opacity(0.12))
-            RoundedRectangle(cornerRadius: 4)
-                .fill(color)
-                .frame(width: max(4, width * min(progress, 1)))
-        }
-        .frame(height: 8)
     }
 
     private var legend: some View {
         HStack(spacing: 14) {
-            legendItem(swatch: .secondary.opacity(0.45), label: "Mês passou", value: "\(Int(summary.dayProgress * 100))%")
-            legendItem(swatch: paceColor, label: "Você gastou", value: "\(Int(summary.spentRatio * 100))%")
+            legendItem(swatch: CFTheme.textSecondary.opacity(0.45), label: "Mês passou", value: "\(Int(summary.dayProgress * 100))%")
+            legendItem(swatch: CFTheme.paceColor(for: summary.paceState), label: "Você gastou", value: "\(Int(summary.spentRatio * 100))%")
             Spacer()
             if summary.daysRemaining > 0 {
                 Text("\(summary.dailyBudgetRemaining.brl) por dia até o fim")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CFTheme.textSecondary)
             }
         }
         .font(.caption)
@@ -286,7 +325,7 @@ private struct PaceCard: View {
     private func legendItem(swatch: Color, label: String, value: String) -> some View {
         HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: 2).fill(swatch).frame(width: 10, height: 10)
-            Text(label).foregroundStyle(.secondary)
+            Text(label).foregroundStyle(CFTheme.textSecondary)
             Text(value).monospacedDigit()
         }
     }
@@ -297,12 +336,18 @@ private struct PaceCard: View {
         return "Faltam \(remaining) \(remaining == 1 ? "dia" : "dias")"
     }
 
-    private var paceColor: Color {
-        switch summary.paceState {
-        case .underspending: return .blue
-        case .onTrack: return .green
-        case .warning: return .orange
-        case .danger: return .red
+    private func updatePulse(for state: PaceState) {
+        guard !reduceMotion else {
+            pulse = false
+            return
+        }
+        if state == .danger {
+            pulse = false
+            withAnimation(CFMotion.snappy.repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        } else {
+            pulse = false
         }
     }
 }
