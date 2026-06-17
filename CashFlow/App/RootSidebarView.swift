@@ -5,13 +5,15 @@ enum SidebarDestination: Hashable {
     case transactions
     case categories
     case accounts
+    case intelligence
 }
 
 struct RootSidebarView: View {
     @State private var selection: SidebarDestination? = .dashboard
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
                 Section("Visão") {
                     Label("Visão geral", systemImage: "chart.pie.fill")
@@ -29,16 +31,29 @@ struct RootSidebarView: View {
                     Label("Contas", systemImage: "wallet.pass.fill")
                         .tag(SidebarDestination.accounts)
                 }
+
+                Section("Inteligência") {
+                    Label("Inteligência", systemImage: "sparkles")
+                        .tag(SidebarDestination.intelligence)
+                }
             }
             .listStyle(.sidebar)
             .navigationTitle("CashFlow")
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(CFTheme.brandGreen)
+        .onChange(of: columnVisibility) { _, newValue in
+            if newValue != .all {
+                columnVisibility = .all
+            }
+        }
         .background(CFTheme.surfacePrimary)
+#if os(macOS)
+        .removeSidebarToggleButton()
+#endif
     }
 
     @ViewBuilder
@@ -52,6 +67,8 @@ struct RootSidebarView: View {
             CategoriesView()
         case .accounts:
             AccountsView()
+        case .intelligence:
+            AISettingsView()
         case .none:
             ContentUnavailableView(
                 "Selecione uma seção",

@@ -10,7 +10,11 @@ import SwiftData
 
 @main
 struct CashFlowApp: App {
+    @StateObject private var aiService = AIService()
+
     var sharedModelContainer: ModelContainer = {
+        DataReset.wipeStoreIfNeeded()
+
         let schema = Schema([
             Transaction.self,
             Category.self,
@@ -19,9 +23,7 @@ struct CashFlowApp: App {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            SeedData.seedIfNeeded(context: container.mainContext)
-            return container
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -30,12 +32,10 @@ struct CashFlowApp: App {
     var body: some Scene {
         WindowGroup {
             RootSidebarView()
+                .environmentObject(aiService)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .modelContainer(sharedModelContainer)
-        .commands {
-            SidebarCommands()
-        }
 #if os(macOS)
         .windowResizability(.contentSize)
 #endif

@@ -18,6 +18,12 @@ enum DataReset {
         defaults.removeObject(forKey: UserDefaultsKeys.hasSeededDefaults)
         defaults.removeObject(forKey: UserDefaultsKeys.lastUsedAccountID)
         defaults.removeObject(forKey: UserDefaultsKeys.lastUsedCategoryID)
+        defaults.removeObject(forKey: UserDefaultsKeys.aiActiveProvider)
+        defaults.removeObject(forKey: UserDefaultsKeys.aiActiveModelID)
+        defaults.removeObject(forKey: UserDefaultsKeys.aiOllamaHost)
+        defaults.removeObject(forKey: UserDefaultsKeys.aiOllamaPort)
+        SecureStore.delete(.openAIAPIKey)
+        SecureStore.delete(.anthropicAPIKey)
     }
 
     private static func deleteDefaultStore() {
