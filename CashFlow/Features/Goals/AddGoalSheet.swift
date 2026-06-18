@@ -21,37 +21,9 @@ struct AddGoalSheet: View {
     @State private var notes: String
     @State private var symbolName: String
     @State private var colorHex: String
-    @State private var progressMode: ProgressMode
-    @State private var manualCurrentAmount: Decimal
     @State private var linkedAccountIDs: Set<UUID>
-
-    private enum ProgressMode: String, CaseIterable, Identifiable {
-        case linkedAccounts
-        case manual
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .linkedAccounts: return "Por contas"
-            case .manual: return "Manual"
-            }
-        }
-
-        var subtitle: String {
-            switch self {
-            case .linkedAccounts: return "Soma o saldo das contas que você escolher"
-            case .manual: return "Você informa quanto já juntou"
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .linkedAccounts: return "building.columns.fill"
-            case .manual: return "hand.point.up.left.fill"
-            }
-        }
-    }
+    @State private var createsDedicatedAccount: Bool
+    @State private var dedicatedOpeningBalance: Decimal
 
     init(editing: FinancialGoal? = nil) {
         self.editing = editing
@@ -63,9 +35,9 @@ struct AddGoalSheet: View {
             _notes = State(initialValue: editing.notes)
             _symbolName = State(initialValue: editing.symbolName)
             _colorHex = State(initialValue: editing.colorHex)
-            _progressMode = State(initialValue: editing.usesManualProgress ? .manual : .linkedAccounts)
-            _manualCurrentAmount = State(initialValue: editing.manualCurrentAmount ?? 0)
             _linkedAccountIDs = State(initialValue: Set(editing.linkedAccounts.map(\.id)))
+            _createsDedicatedAccount = State(initialValue: false)
+            _dedicatedOpeningBalance = State(initialValue: 0)
         } else {
             _name = State(initialValue: "")
             _targetAmount = State(initialValue: 0)
@@ -74,16 +46,17 @@ struct AddGoalSheet: View {
             _notes = State(initialValue: "")
             _symbolName = State(initialValue: "flag.fill")
             _colorHex = State(initialValue: "#6366F1")
-            _progressMode = State(initialValue: .linkedAccounts)
-            _manualCurrentAmount = State(initialValue: 0)
             _linkedAccountIDs = State(initialValue: [])
+            _createsDedicatedAccount = State(initialValue: true)
+            _dedicatedOpeningBalance = State(initialValue: 0)
         }
     }
 
     private var isEditing: Bool { editing != nil }
 
+    /// Anything that holds positive money can back a goal — banks, investments and other goal accounts.
     private var linkableAccounts: [Account] {
-        accounts.filter { $0.kind == .investment || $0.kind == .bank }
+        accounts.filter { $0.kind != .creditCard }
     }
 
     private var linkedBalancePreview: Decimal {
@@ -92,8 +65,14 @@ struct AddGoalSheet: View {
             .reduce(0) { $0 + $1.currentBalance(considering: transactions) }
     }
 
+    private var hasProgressSource: Bool {
+        createsDedicatedAccount || !linkedAccountIDs.isEmpty
+    }
+
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && targetAmount > 0
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && targetAmount > 0
+            && hasProgressSource
     }
 
     var body: some View {
@@ -105,7 +84,7 @@ struct AddGoalSheet: View {
             footer.cfAdaptiveSheetFooterVisible()
         }
         .cfAdaptiveSheetNavigation()
-        .cfAdaptiveSheetFrame(width: 500, height: 660)
+        .cfAdaptiveSheetFrame(width: 500, height: 720)
         .cfCompactSheetToolbar(
             title: isEditing ? "Editar meta" : "Nova meta",
             saveDisabled: !isValid,
@@ -157,19 +136,11 @@ struct AddGoalSheet: View {
                     }
                 }
 
-                sectionHeader("Como acompanhar o progresso")
-                progressModePicker
-
-                switch progressMode {
-                case .manual:
-                    formGroup {
-                        inlineField("Quanto já juntou") {
-                            CurrencyField(amount: $manualCurrentAmount, placeholder: "R$ 0,00", style: .compact)
-                        }
-                    }
-                case .linkedAccounts:
-                    linkedAccountsSection
+                sectionHeader("De onde vem o dinheiro")
+                if !isEditing {
+                    dedicatedAccountSection
                 }
+                linkedAccountsSection
 
                 sectionHeader("Nota")
                 formGroup {
@@ -187,62 +158,38 @@ struct AddGoalSheet: View {
         .scrollIndicators(.never)
     }
 
-    private var progressModePicker: some View {
-        Grid(horizontalSpacing: 10) {
-            GridRow {
-                ForEach(ProgressMode.allCases) { mode in
-                    progressModeCard(mode)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    private var dedicatedAccountSection: some View {
+        formGroup {
+            toggleRow("Criar conta dedicada pra essa meta", isOn: $createsDedicatedAccount)
+            if createsDedicatedAccount {
+                formDivider
+                inlineField("Já tem reservado") {
+                    CurrencyField(amount: $dedicatedOpeningBalance, placeholder: "R$ 0,00", style: .compact)
                 }
-            }
-        }
-    }
-
-    private func progressModeCard(_ mode: ProgressMode) -> some View {
-        let isSelected = progressMode == mode
-
-        return Button {
-            withAnimation(CFMotion.snappy) { progressMode = mode }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: mode.icon)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isSelected ? CFTheme.accent : CFTheme.textSecondary)
-                Text(mode.title)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(CFTheme.textPrimary)
-                Text(mode.subtitle)
-                    .font(.caption2)
+                Text("Vamos criar uma conta tipo \"Meta\" separada, fora do disponível e fora dos investimentos. Você deposita nela quando guardar dinheiro pra esse objetivo.")
+                    .font(CFTheme.caption())
                     .foregroundStyle(CFTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected ? CFTheme.accent.opacity(0.1) : CFTheme.surfaceElevated.opacity(0.38))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? CFTheme.accent.opacity(0.45) : CFTheme.textTertiary.opacity(0.15), lineWidth: isSelected ? 1.5 : 1)
-            )
         }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var linkedAccountsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if linkableAccounts.isEmpty {
+            if !createsDedicatedAccount && linkableAccounts.isEmpty {
                 formGroup {
-                    Text("Cadastre contas bancárias ou de investimento para vincular.")
+                    Text("Cadastre uma conta bancária, de investimento ou crie uma conta dedicada pra essa meta.")
                         .font(CFTheme.caption())
                         .foregroundStyle(CFTheme.textSecondary)
                         .padding(12)
                 }
-            } else {
+            } else if !linkableAccounts.isEmpty {
+                Text(createsDedicatedAccount ? "Vincular contas existentes (opcional)" : "Vincular contas existentes")
+                    .font(CFTheme.caption())
+                    .foregroundStyle(CFTheme.textTertiary)
+                    .padding(.horizontal, 2)
+
                 formGroup {
                     ForEach(Array(linkableAccounts.enumerated()), id: \.element.id) { index, account in
                         if index > 0 { formDivider }
@@ -262,19 +209,6 @@ struct AddGoalSheet: View {
                     }
                     .padding(.horizontal, 4)
                 }
-            }
-
-            if let editing {
-                Button("Usar saldo atual como valor manual") {
-                    manualCurrentAmount = GoalProgressCalculator.currentAmount(
-                        for: editing,
-                        transactions: transactions
-                    )
-                    progressMode = .manual
-                }
-                .font(CFTheme.caption())
-                .buttonStyle(.borderless)
-                .padding(.horizontal, 4)
             }
         }
     }
@@ -300,9 +234,17 @@ struct AddGoalSheet: View {
                         .font(.callout.weight(.medium))
                         .foregroundStyle(CFTheme.textPrimary)
                         .lineLimit(1)
-                    Text(balance.brl)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(CFTheme.textSecondary)
+                    HStack(spacing: 6) {
+                        Text(account.kind.displayName)
+                            .font(.caption2)
+                            .foregroundStyle(CFTheme.textTertiary)
+                        Text("·")
+                            .font(.caption2)
+                            .foregroundStyle(CFTheme.textTertiary)
+                        Text(balance.brl)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(CFTheme.textSecondary)
+                    }
                 }
                 Spacer(minLength: 8)
                 Image(systemName: isLinked ? "checkmark.circle.fill" : "circle")
@@ -399,8 +341,24 @@ struct AddGoalSheet: View {
     private func save() {
         guard isValid else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let selectedAccounts = linkableAccounts.filter { linkedAccountIDs.contains($0.id) }
         let normalizedDeadline = hasDeadline ? Calendar.current.startOfDay(for: deadline) : nil
+
+        var selectedAccounts = linkableAccounts.filter { linkedAccountIDs.contains($0.id) }
+
+        if !isEditing, createsDedicatedAccount {
+            let nextSortOrder = (accounts.map(\.sortOrder).max() ?? -1) + 1
+            let dedicated = Account(
+                name: trimmedName,
+                kind: .goal,
+                colorHex: colorHex,
+                symbolName: symbolName,
+                sortOrder: nextSortOrder,
+                openingBalance: dedicatedOpeningBalance,
+                openingDate: Calendar.current.startOfDay(for: .now)
+            )
+            modelContext.insert(dedicated)
+            selectedAccounts.append(dedicated)
+        }
 
         if let editing {
             editing.name = trimmedName
@@ -410,12 +368,11 @@ struct AddGoalSheet: View {
             editing.symbolName = symbolName
             editing.colorHex = colorHex
             editing.linkedAccounts = selectedAccounts
-            editing.manualCurrentAmount = progressMode == .manual ? manualCurrentAmount : nil
+            editing.manualCurrentAmount = nil
         } else {
             let goal = FinancialGoal(
                 name: trimmedName,
                 targetAmount: targetAmount,
-                manualCurrentAmount: progressMode == .manual ? manualCurrentAmount : nil,
                 deadline: normalizedDeadline,
                 symbolName: symbolName,
                 colorHex: colorHex,
