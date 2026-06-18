@@ -16,7 +16,19 @@ final class AIConfiguration {
     }
 
     var activeModelID: String? {
-        get { defaults.string(forKey: UserDefaultsKeys.aiActiveModelID) }
+        get {
+            guard let raw = defaults.string(forKey: UserDefaultsKeys.aiActiveModelID) else { return nil }
+            let migrated: String
+            if activeProvider == .anthropic {
+                migrated = AnthropicModelCatalog.migrate(modelID: raw)
+            } else {
+                migrated = raw
+            }
+            if migrated != raw {
+                defaults.set(migrated, forKey: UserDefaultsKeys.aiActiveModelID)
+            }
+            return migrated
+        }
         set { defaults.set(newValue, forKey: UserDefaultsKeys.aiActiveModelID) }
     }
 

@@ -1,6 +1,6 @@
 # Ativar sincronização iCloud (SwiftData + CloudKit)
 
-O CashFlow está **preparado** para sincronizar Mac, iPhone e iPad pela mesma base iCloud. Por padrão isso fica **desligado** para o app continuar funcionando com conta Apple gratuita (sem capability CloudKit na assinatura).
+O CashFlow está **preparado** para sincronizar dados pela iCloud (Mac). Por padrão isso fica **desligado** para o app continuar funcionando com conta Apple gratuita (sem capability CloudKit na assinatura).
 
 ## Estado atual (sem pagar o Developer Program)
 
@@ -24,7 +24,7 @@ A capability **iCloud (CloudKit)** exige **Apple Developer Program** (paga). Tim
 3. **Build Settings** → **Active Compilation Conditions** → adicionar `CLOUDKIT_SYNC` (Debug e Release).  
    Alternativa: usar [`Configurations/CloudKit-Sync.xcconfig`](../Configurations/CloudKit-Sync.xcconfig) como base da configuração.
 
-4. Mesmo **Apple ID** no iCloud em Mac, iPhone e iPad.
+4. Mesmo **Apple ID** no iCloud no Mac.
 
 ## Arquivos de referência
 
@@ -32,8 +32,7 @@ A capability **iCloud (CloudKit)** exige **Apple Developer Program** (paga). Tim
 |---------|-----|
 | [`CloudKitSync.swift`](../Persistence/CloudKitSync.swift) | ID do container e `isEnabled` |
 | [`ModelContainerFactory.swift`](../Persistence/ModelContainerFactory.swift) | `.private(container)` quando `CLOUDKIT_SYNC` |
-| [`CashFlow-iOS.entitlements`](../CashFlow-iOS.entitlements) | iOS com iCloud (referência) |
-| [`CashFlow.entitlements.icloud`](CashFlow/CashFlow.entitlements.icloud) | macOS sandbox + iCloud (referência) |
+| [`CashFlow.entitlements.icloud`](CashFlow/CashFlow.entitlements.icloud) | macOS sandbox + iCloud (referência futura) |
 
 O Xcode costuma reescrever os entitlements ao adicionar a capability — os arquivos acima são o modelo esperado.
 

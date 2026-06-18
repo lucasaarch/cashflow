@@ -12,6 +12,13 @@ enum InvestmentDirection: String, CaseIterable, Identifiable {
         case .withdraw: return "Resgatar"
         }
     }
+
+    var fundDirection: FundTransferDirection {
+        switch self {
+        case .deposit: return .deposit
+        case .withdraw: return .withdraw
+        }
+    }
 }
 
 struct InvestmentTransferSheet: View {
@@ -191,54 +198,14 @@ struct InvestmentTransferSheet: View {
               let bankAccount = bankAccounts.first(where: { $0.id == bankAccountID })
         else { return }
 
-        let groupID = UUID()
-        let normalizedDate = Calendar.current.startOfDay(for: occurredOn)
-        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = direction == .deposit ? "Aporte" : "Resgate"
-        let memo = trimmedNote.isEmpty ? "\(label) \(investmentAccount.name)" : trimmedNote
-
-        switch direction {
-        case .deposit:
-            // Bank → Investment: out of bank, into investment.
-            let outFromBank = Transaction(
-                amount: amount,
-                kind: .expense,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: bankAccount,
-                transferGroupID: groupID
-            )
-            let intoInvestment = Transaction(
-                amount: amount,
-                kind: .income,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: investmentAccount,
-                transferGroupID: groupID
-            )
-            modelContext.insert(outFromBank)
-            modelContext.insert(intoInvestment)
-
-        case .withdraw:
-            // Investment → Bank.
-            let outFromInvestment = Transaction(
-                amount: amount,
-                kind: .expense,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: investmentAccount,
-                transferGroupID: groupID
-            )
-            let intoBank = Transaction(
-                amount: amount,
-                kind: .income,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: bankAccount,
-                transferGroupID: groupID
-            )
-            modelContext.insert(outFromInvestment)
-            modelContext.insert(intoBank)
-        }
+        FundTransferRecorder.record(
+            in: modelContext,
+            direction: direction.fundDirection,
+            amount: amount,
+            occurredOn: occurredOn,
+            bankAccount: bankAccount,
+            fundAccount: investmentAccount,
+            note: note
+        )
     }
 }

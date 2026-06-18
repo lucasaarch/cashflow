@@ -2,15 +2,26 @@ import Foundation
 
 struct MonthSummary {
     let referenceDate: Date
-    let monthlyIncomeBudget: Decimal
+    /// Fallback used only when nothing else is registered (no recurring incomes, no receivables,
+    /// no realized income this month). Coming from `AppSettings.monthlyIncomeCents`.
+    let monthlyIncomeFallback: Decimal
     private let transactions: [Transaction]
+    private let pendingReceivables: [Receivable]
     private let calendar: Calendar
     private let now: Date
 
-    init(referenceDate: Date, monthlyIncomeBudget: Decimal, transactions: [Transaction], calendar: Calendar = .current, now: Date = .now) {
+    init(
+        referenceDate: Date,
+        monthlyIncomeFallback: Decimal,
+        transactions: [Transaction],
+        pendingReceivables: [Receivable] = [],
+        calendar: Calendar = .current,
+        now: Date = .now
+    ) {
         self.referenceDate = referenceDate
-        self.monthlyIncomeBudget = monthlyIncomeBudget
+        self.monthlyIncomeFallback = monthlyIncomeFallback
         self.transactions = transactions
+        self.pendingReceivables = pendingReceivables
         self.calendar = calendar
         self.now = now
     }
@@ -84,16 +95,47 @@ struct MonthSummary {
             .reduce(Decimal(0)) { $0 + $1.amount }
     }
 
-    var hasPlanned: Bool {
-        plannedIncome > 0 || plannedExpense > 0
+    /// Sum of pending Receivables expected to land in the current month.
+    var pendingReceivableIncome: Decimal {
+        let interval = monthInterval
+        return pendingReceivables
+            .filter { $0.isPending && interval.contains($0.expectedDate) }
+            .reduce(Decimal(0)) { $0 + $1.amount }
     }
 
+    var hasPlanned: Bool {
+        plannedIncome > 0 || plannedExpense > 0 || pendingReceivableIncome > 0
+    }
+
+    /// Total income realistically expected for the whole month:
+    /// already-realized + planned (future-dated) income transactions + pending receivables.
+    /// Falls back to the legacy manual budget only when none of these are registered.
+    var expectedIncome: Decimal {
+        let computed = totalIncome + plannedIncome + pendingReceivableIncome
+        return computed > 0 ? computed : monthlyIncomeFallback
+    }
+
+    /// True when there's no income data at all (realized, planned or receivable) and the
+    /// summary is using the manual `monthlyIncomeFallback`. UI can use this to show the
+    /// fallback editor only when it's actually the active signal.
+    var usesFallbackIncome: Bool {
+        totalIncome + plannedIncome + pendingReceivableIncome == 0
+    }
+
+    /// Honest cash-flow saldo: what actually came in minus what actually went out so far.
+    /// Does NOT inflate with expected/budgeted income — that's `expectedIncome` minus expense.
     var balance: Decimal {
-        max(monthlyIncomeBudget, totalIncome) - totalExpense
+        totalIncome - totalExpense
+    }
+
+    /// Forward-looking saldo: what the month is projected to end at if expected income
+    /// materializes and planned expenses go through.
+    var projectedBalance: Decimal {
+        expectedIncome - totalExpense - plannedExpense
     }
 
     var spentRatio: Double {
-        let base = max(monthlyIncomeBudget, totalIncome)
+        let base = expectedIncome
         guard base > 0 else { return 0 }
         let ratio = NSDecimalNumber(decimal: totalExpense / base).doubleValue
         return min(max(ratio, 0), 1.5)
@@ -117,7 +159,7 @@ struct MonthSummary {
 
     var dailyBudgetRemaining: Decimal {
         guard daysRemaining > 0 else { return 0 }
-        let remaining = max(balance, 0)
+        let remaining = max(expectedIncome - totalExpense, 0)
         return remaining / Decimal(daysRemaining)
     }
 

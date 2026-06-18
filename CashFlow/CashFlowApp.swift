@@ -12,6 +12,7 @@ import SwiftData
 struct CashFlowApp: App {
     @StateObject private var aiService = AIService()
     @StateObject private var chatPanelState = AIChatPanelState()
+    @StateObject private var privacyMode = PrivacyMode()
 
     var sharedModelContainer: ModelContainer = ModelContainerFactory.make()
 
@@ -20,6 +21,7 @@ struct CashFlowApp: App {
             AdaptiveRootView()
                 .environmentObject(aiService)
                 .environmentObject(chatPanelState)
+                .environmentObject(privacyMode)
                 #if os(macOS)
                 .frame(minWidth: 900, minHeight: 600)
                 #endif

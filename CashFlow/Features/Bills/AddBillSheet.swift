@@ -48,7 +48,7 @@ struct AddBillSheet: View {
     }
 
     private var spendableAccounts: [Account] {
-        accounts.filter { $0.kind != .investment }
+        accounts.filter { $0.kind == .bank || $0.kind == .creditCard }
     }
 
     private var isValid: Bool {

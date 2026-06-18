@@ -9,6 +9,7 @@ enum UserDefaultsKeys {
     static let aiActiveModelID = "ai.activeModelID"
     static let aiOllamaHost = "ai.ollamaHost"
     static let aiOllamaPort = "ai.ollamaPort"
+    static let aiChatPanelWidth = "ai.chatPanelWidth"
 
     static func aiInsightCacheKey(monthKey: String) -> String {
         "ai.insight.\(monthKey)"
@@ -16,5 +17,13 @@ enum UserDefaultsKeys {
 
     static func aiInsightCachedAtKey(monthKey: String) -> String {
         "ai.insight.\(monthKey).cachedAt"
+    }
+
+    static func aiWishlistInsightCacheKey(monthKey: String) -> String {
+        "ai.wishlistInsight.\(monthKey)"
+    }
+
+    static func aiWishlistInsightCachedAtKey(monthKey: String) -> String {
+        "ai.wishlistInsight.\(monthKey).cachedAt"
     }
 }

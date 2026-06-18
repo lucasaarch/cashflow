@@ -18,6 +18,7 @@ struct CFProgressBar: View {
                     .frame(width: max(4, geo.size.width * min(animatedProgress, 1)))
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: height)
         .onAppear {
             if reduceMotion {

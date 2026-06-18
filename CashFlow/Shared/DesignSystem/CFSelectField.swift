@@ -257,3 +257,36 @@ extension AccountKind {
         }
     }
 }
+
+extension WishlistPriority {
+    var selectTint: Color {
+        switch self {
+        case .urgent: return CFTheme.danger
+        case .high: return CFTheme.warning
+        case .medium: return CFTheme.accent
+        case .low: return CFTheme.textSecondary
+        }
+    }
+
+    var selectSymbolName: String {
+        switch self {
+        case .urgent: return "exclamationmark.circle.fill"
+        case .high: return "arrow.up.circle.fill"
+        case .medium: return "equal.circle.fill"
+        case .low: return "arrow.down.circle.fill"
+        }
+    }
+
+    var selectOption: CFSelectOption<WishlistPriority> {
+        CFSelectOption(
+            id: self,
+            title: displayName,
+            symbolName: selectSymbolName,
+            tint: selectTint
+        )
+    }
+
+    static var selectOptions: [CFSelectOption<WishlistPriority>] {
+        allCases.map(\.selectOption)
+    }
+}

@@ -10,7 +10,6 @@ struct GoalProgressSnapshot: Identifiable {
     let monthlyNeeded: Decimal?
     let monthsRemaining: Int?
     let isCompleted: Bool
-    let usesManualProgress: Bool
     let deadline: Date?
 
     var id: UUID { goalID }
@@ -51,7 +50,6 @@ enum GoalProgressCalculator {
             monthlyNeeded: monthlyNeeded,
             monthsRemaining: monthsRemaining,
             isCompleted: goal.isCompleted || (target > 0 && current >= target),
-            usesManualProgress: goal.usesManualProgress,
             deadline: goal.deadline
         )
     }
@@ -61,10 +59,7 @@ enum GoalProgressCalculator {
         transactions: [Transaction],
         asOf: Date = .now
     ) -> Decimal {
-        if let manual = goal.manualCurrentAmount {
-            return max(manual, 0)
-        }
-        return goal.linkedAccounts
+        goal.linkedAccounts
             .filter { !$0.isArchived }
             .reduce(Decimal(0)) { partial, account in
                 partial + max(account.currentBalance(considering: transactions, asOf: asOf), 0)

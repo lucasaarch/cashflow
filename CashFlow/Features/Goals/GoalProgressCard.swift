@@ -5,6 +5,8 @@ struct GoalProgressCard: View {
     var goal: FinancialGoal?
     var compact: Bool = false
 
+    @EnvironmentObject private var privacy: PrivacyMode
+
     private var tint: Color {
         if let goal { return Color(hex: goal.colorHex) }
         return CFTheme.accent
@@ -29,9 +31,9 @@ struct GoalProgressCard: View {
                 Spacer()
                 if !compact {
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(snapshot.currentAmount.brl)
+                        Text(snapshot.currentAmount.brl(masked: privacy.valuesHidden))
                             .font(.callout.monospacedDigit().weight(.semibold))
-                        Text("de \(snapshot.targetAmount.brl)")
+                        Text("de \(snapshot.targetAmount.brl(masked: privacy.valuesHidden))")
                             .font(.caption2)
                             .foregroundStyle(CFTheme.textTertiary)
                     }
@@ -45,7 +47,7 @@ struct GoalProgressCard: View {
             )
 
             if let monthlyNeeded = snapshot.monthlyNeeded, !snapshot.isCompleted {
-                Text("Faltam \(snapshot.remaining.brl) · \(monthlyNeeded.brl)/mês até a meta")
+                Text("Faltam \(snapshot.remaining.brl(masked: privacy.valuesHidden)) · \(monthlyNeeded.brl(masked: privacy.valuesHidden))/mês até a meta")
                     .font(.caption2)
                     .foregroundStyle(CFTheme.textTertiary)
             }
@@ -55,9 +57,6 @@ struct GoalProgressCard: View {
     private var progressCaption: String {
         if snapshot.isCompleted { return "Meta concluída" }
         let percent = Int(snapshot.progress * 100)
-        if snapshot.usesManualProgress {
-            return "\(percent)% · valor manual"
-        }
         return "\(percent)% · vinculada a contas"
     }
 }

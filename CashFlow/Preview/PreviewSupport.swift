@@ -7,6 +7,7 @@ import SwiftUI
 enum PreviewData {
     static let aiService = AIService()
     static let chatPanelState = AIChatPanelState()
+    static let privacyMode = PrivacyMode()
 
     static let container: ModelContainer = {
         let schema = Schema([
@@ -18,6 +19,7 @@ enum PreviewData {
             RecurringExpense.self,
             Bill.self,
             FinancialGoal.self,
+            WishlistItem.self,
             ChatConversation.self,
             ChatMessage.self
         ])
@@ -149,7 +151,7 @@ enum PreviewData {
     static var monthSummary: MonthSummary {
         MonthSummary(
             referenceDate: .now,
-            monthlyIncomeBudget: 5000,
+            monthlyIncomeFallback: 5000,
             transactions: sampleTransactions
         )
     }
@@ -160,12 +162,14 @@ extension View {
         modelContainer(PreviewData.container)
             .environmentObject(PreviewData.aiService)
             .environmentObject(PreviewData.chatPanelState)
+            .environmentObject(PreviewData.privacyMode)
             .frame(width: width, height: height)
     }
 
     func previewSheet(width: CGFloat, height: CGFloat) -> some View {
         modelContainer(PreviewData.container)
             .environmentObject(PreviewData.aiService)
+            .environmentObject(PreviewData.privacyMode)
             .frame(width: width, height: height)
     }
 }

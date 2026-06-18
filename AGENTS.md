@@ -1,6 +1,6 @@
 # CashFlow — orientações para agentes
 
-App nativo de finanças em **Swift / SwiftUI / SwiftData**, alvo **macOS 26.5+**, **iOS 17+** e **iPadOS 17+**.
+App nativo de finanças em **Swift / SwiftUI / SwiftData**, alvo **macOS 26.5+** (iOS/iPadOS desligados por enquanto).
 
 ## Validação obrigatória
 
@@ -91,6 +91,7 @@ Comandos `xcodebuild` precisam de permissão **`all`** (ou equivalente fora do s
 
 - **UI em português** (rótulos, mensagens, empty states).
 - **Design system**: reutilize `CFTheme`, `CFHoverRow`, `CFIconBadge`, `CFPillButton`, `cfPageBackground()`, sheets no padrão de `CategoriesView` / `AccountsView`.
+- **Seleção em formulários**: use sempre `CFSelectField` (valor obrigatório) ou `CFSelectFieldOptional` (valor opcional) de `Shared/DesignSystem/CFSelectField.swift` — com `CFSelectOption` e, quando existir, `Enum.selectOptions` (ex.: `CategoryKind.selectOptions`, `WishlistPriority.selectOptions`). **Não** use `Picker` com `.menu` / `.wheel` em sheets ou formulários; referência: `AddBillSheet`, `CategoriesView`, `AddWishlistItemSheet`. `Picker` segmentado só para conjuntos binários/pequenos fixos no layout (ex.: direção de transferência).
 - **Multiplataforma**: use `cfLayoutMode` / `CFAdaptiveLayout` para popovers, sheets e toolbars em iPhone; `AdaptiveRootView` escolhe TabView (compact) vs `NavigationSplitView` (regular/macOS).
 - **iCloud (preparado, desligado)**: sync via `CLOUDKIT_SYNC` + capability CloudKit — ver `CashFlow/Documentation/iCloud-Sync.md`. Conta Apple gratuita: manter flag desligada.
 - **Escopo mínimo**: não refatore código não relacionado à tarefa.

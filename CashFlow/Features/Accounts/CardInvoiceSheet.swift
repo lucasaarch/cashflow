@@ -3,6 +3,7 @@ import SwiftData
 
 struct CardInvoiceSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var privacy: PrivacyMode
     @Query private var transactions: [Transaction]
 
     let account: Account
@@ -177,11 +178,11 @@ struct CardInvoiceSheet: View {
     private func lineAmount(_ item: CreditCardStatementLine) -> String {
         switch item {
         case .openingBalance(let amount):
-            return amount.brl
+            return amount.brl(masked: privacy.valuesHidden)
         case .expense(let transaction):
-            return transaction.amount.brl
+            return transaction.amount.brl(masked: privacy.valuesHidden)
         case .payment(let transaction):
-            return "−\(transaction.amount.brl)"
+            return "−\(transaction.amount.brl(masked: privacy.valuesHidden))"
         }
     }
 

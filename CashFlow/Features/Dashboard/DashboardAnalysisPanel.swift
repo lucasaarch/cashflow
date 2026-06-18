@@ -52,6 +52,8 @@ struct CategoryBreakdownContent: View {
     let aggregates: [MonthSummary.CategoryAggregate]
     let totalExpense: Decimal
 
+    @EnvironmentObject private var privacy: PrivacyMode
+
     private var visible: [MonthSummary.CategoryAggregate] {
         Array(aggregates.prefix(6))
     }
@@ -70,7 +72,9 @@ struct CategoryBreakdownContent: View {
                     categoryRow(item, isTop: index == 0)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -84,7 +88,7 @@ struct CategoryBreakdownContent: View {
                     .font(.callout.weight(isTop ? .semibold : .regular))
                     .lineLimit(1)
                 Spacer()
-                Text(item.total.brl)
+                Text(item.total.brl(masked: privacy.valuesHidden))
                     .font(.caption.monospacedDigit().weight(.medium))
                 Text(percentFormatter.string(from: NSNumber(value: share)) ?? "")
                     .font(.caption2)
@@ -93,6 +97,7 @@ struct CategoryBreakdownContent: View {
             }
             CFProgressBar(progress: ratio, color: CFTheme.expense.opacity(isTop ? 1 : 0.7), height: 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func ratioOfMax(_ value: Decimal) -> CGFloat {
@@ -116,6 +121,8 @@ struct CategoryBreakdownContent: View {
 struct AccountBreakdownContent: View {
     let aggregates: [MonthSummary.AccountAggregate]
 
+    @EnvironmentObject private var privacy: PrivacyMode
+
     var body: some View {
         CFPanelSection(title: "Por conta", subtitle: "Forma de pagamento") {
             VStack(spacing: 6) {
@@ -123,7 +130,9 @@ struct AccountBreakdownContent: View {
                     accountRow(item)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -137,10 +146,11 @@ struct AccountBreakdownContent: View {
                 .font(.callout)
                 .lineLimit(1)
             Spacer()
-            Text(item.total.brl)
+            Text(item.total.brl(masked: privacy.valuesHidden))
                 .font(.caption.monospacedDigit().weight(.medium))
                 .foregroundStyle(isCard ? CFTheme.debt : CFTheme.textPrimary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -2,45 +2,16 @@ import SwiftUI
 import Charts
 import SwiftData
 
-// MARK: - Shared period menu
-
-private struct ChartPeriodMenu: View {
-    @Binding var period: ReportPeriod
-
-    var body: some View {
-        Menu {
-            ForEach(ReportPeriod.allCases) { item in
-                Button {
-                    period = item
-                } label: {
-                    if item == period {
-                        Label(item.label, systemImage: "checkmark")
-                    } else {
-                        Text(item.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(period.label)
-                    .font(CFTheme.caption().weight(.semibold))
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(CFTheme.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(CFTheme.textTertiary.opacity(0.12)))
-        }
-        .buttonStyle(.plain)
-        .help("Período")
-    }
-}
+// MARK: - Shared card header
 
 private struct ChartCardHeader: View {
     let title: String
     let subtitle: String?
     @Binding var period: ReportPeriod
+
+    private static let periodOptions: [CFSelectOption<ReportPeriod>] = ReportPeriod.allCases.map {
+        CFSelectOption(id: $0, title: $0.label)
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -55,7 +26,7 @@ private struct ChartCardHeader: View {
                 }
             }
             Spacer(minLength: 8)
-            ChartPeriodMenu(period: $period)
+            CFSelectField(selection: $period, options: Self.periodOptions, popoverWidth: 180)
         }
     }
 }

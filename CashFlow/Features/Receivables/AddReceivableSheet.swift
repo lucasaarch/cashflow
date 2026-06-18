@@ -181,6 +181,7 @@ struct AddReceivableSheet: View {
             if isEditing {
                 CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
                     if let editing {
+                        ReceivableNotifications.cancel(for: editing)
                         modelContext.delete(editing)
                     }
                     dismiss()
@@ -221,6 +222,7 @@ struct AddReceivableSheet: View {
             editing.note = trimmedNote
             editing.category = category
             editing.account = account
+            ReceivableNotifications.schedule(for: editing)
         } else {
             let receivable = Receivable(
                 name: trimmedName,
@@ -231,6 +233,7 @@ struct AddReceivableSheet: View {
                 account: account
             )
             modelContext.insert(receivable)
+            ReceivableNotifications.schedule(for: receivable)
         }
     }
 }

@@ -5,21 +5,23 @@ enum AccountKind: String, Codable, CaseIterable {
     case bank
     case creditCard
     case investment
+    case goal
 
     var displayName: String {
         switch self {
         case .bank:       return "Banco"
         case .creditCard: return "Cartão"
         case .investment: return "Investimento"
+        case .goal:       return "Meta"
         }
     }
 
     /// Liquid kinds count toward your "available money" total.
-    /// Cards represent debt; investments represent allocated, non-liquid funds.
+    /// Cards represent debt; investments and goals represent allocated, non-liquid funds.
     var isLiquid: Bool {
         switch self {
-        case .bank:                    return true
-        case .creditCard, .investment: return false
+        case .bank:                           return true
+        case .creditCard, .investment, .goal: return false
         }
     }
 
@@ -28,6 +30,7 @@ enum AccountKind: String, Codable, CaseIterable {
         case .bank:       return "building.columns.fill"
         case .creditCard: return "creditcard.fill"
         case .investment: return "chart.line.uptrend.xyaxis"
+        case .goal:       return "flag.fill"
         }
     }
 }

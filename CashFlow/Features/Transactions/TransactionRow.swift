@@ -1,7 +1,15 @@
 import SwiftUI
 
+enum TransactionListMetrics {
+    /// Matches `CFHoverRow` horizontal padding so day totals line up with row amounts.
+    static let rowContentInset: CGFloat = 12
+    static let amountColumnMinWidth: CGFloat = 108
+}
+
 struct TransactionRow: View {
     let transaction: Transaction
+
+    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
         HStack(spacing: 14) {
@@ -64,9 +72,9 @@ struct TransactionRow: View {
             Spacer(minLength: 12)
 
             Text(formattedAmount)
-                .font(CFTheme.body().weight(.medium))
-                .monospacedDigit()
+                .font(CFTheme.kpiValue())
                 .foregroundStyle(amountColor)
+                .frame(minWidth: TransactionListMetrics.amountColumnMinWidth, alignment: .trailing)
         }
         .opacity(isPlanned ? 0.7 : 1)
     }
@@ -103,11 +111,11 @@ struct TransactionRow: View {
     private var transferBadge: some View {
         Text("Transferência")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(CFTheme.accent)
+            .foregroundStyle(CFTheme.textSecondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
-                Capsule().fill(CFTheme.accent.opacity(0.15))
+                Capsule().fill(CFTheme.textTertiary.opacity(0.18))
             )
     }
 
@@ -146,21 +154,15 @@ struct TransactionRow: View {
     }
 
     private var rowTint: Color {
-        if transaction.isTransfer {
-            return CFTheme.accent
-        }
-        return transaction.kind == .expense ? CFTheme.expense : CFTheme.income
+        transaction.kind == .expense ? CFTheme.expense : CFTheme.income
     }
 
     private var formattedAmount: String {
         let prefix = transaction.kind == .expense ? "−" : "+"
-        return "\(prefix)\(transaction.amount.brl)"
+        return "\(prefix)\(transaction.amount.brl(masked: privacy.valuesHidden))"
     }
 
     private var amountColor: Color {
-        if transaction.isTransfer {
-            return CFTheme.accent
-        }
-        return transaction.kind == .expense ? CFTheme.textPrimary : CFTheme.income
+        CFTheme.textPrimary
     }
 }

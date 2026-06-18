@@ -12,6 +12,13 @@ enum GoalTransferDirection: String, CaseIterable, Identifiable {
         case .withdraw: return "Retirar"
         }
     }
+
+    var fundDirection: FundTransferDirection {
+        switch self {
+        case .deposit: return .deposit
+        case .withdraw: return .withdraw
+        }
+    }
 }
 
 /// Moves money between a bank account and a goal-kind account. Records both legs as
@@ -194,52 +201,14 @@ struct GoalTransferSheet: View {
               let bankAccount = bankAccounts.first(where: { $0.id == bankAccountID })
         else { return }
 
-        let groupID = UUID()
-        let normalizedDate = Calendar.current.startOfDay(for: occurredOn)
-        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = direction == .deposit ? "Depósito em meta" : "Retirada de meta"
-        let memo = trimmedNote.isEmpty ? "\(label): \(goalAccount.name)" : trimmedNote
-
-        switch direction {
-        case .deposit:
-            let outFromBank = Transaction(
-                amount: amount,
-                kind: .expense,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: bankAccount,
-                transferGroupID: groupID
-            )
-            let intoGoal = Transaction(
-                amount: amount,
-                kind: .income,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: goalAccount,
-                transferGroupID: groupID
-            )
-            modelContext.insert(outFromBank)
-            modelContext.insert(intoGoal)
-
-        case .withdraw:
-            let outFromGoal = Transaction(
-                amount: amount,
-                kind: .expense,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: goalAccount,
-                transferGroupID: groupID
-            )
-            let intoBank = Transaction(
-                amount: amount,
-                kind: .income,
-                occurredOn: normalizedDate,
-                note: memo,
-                account: bankAccount,
-                transferGroupID: groupID
-            )
-            modelContext.insert(outFromGoal)
-            modelContext.insert(intoBank)
-        }
+        FundTransferRecorder.record(
+            in: modelContext,
+            direction: direction.fundDirection,
+            amount: amount,
+            occurredOn: occurredOn,
+            bankAccount: bankAccount,
+            fundAccount: goalAccount,
+            note: note
+        )
     }
 }

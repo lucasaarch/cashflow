@@ -6,7 +6,8 @@ import SwiftUI
 /// Fenced code blocks and tables fall back to plain paragraphs.
 struct CFMarkdownText: View {
     let text: String
-    var paragraphSpacing: CGFloat = 8
+    var paragraphSpacing: CGFloat = 10
+    var lineSpacing: CGFloat = 4
 
     var body: some View {
         VStack(alignment: .leading, spacing: paragraphSpacing) {
@@ -14,7 +15,7 @@ struct CFMarkdownText: View {
                 blockView(block)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private struct Block {
@@ -85,22 +86,26 @@ struct CFMarkdownText: View {
             Text(inlineMarkdown(block.content))
                 .font(CFTheme.body())
                 .foregroundStyle(CFTheme.textPrimary)
+                .lineSpacing(lineSpacing)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
         case .bullet:
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("•")
-                    .font(CFTheme.body())
+                    .font(CFTheme.body().weight(.semibold))
                     .foregroundStyle(CFTheme.accent)
                 Text(inlineMarkdown(block.content))
                     .font(CFTheme.body())
                     .foregroundStyle(CFTheme.textPrimary)
+                    .lineSpacing(lineSpacing)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
         case .numbered(let label):
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("\(label).")
                     .font(CFTheme.body().weight(.semibold))
                     .foregroundStyle(CFTheme.accent)
@@ -108,16 +113,30 @@ struct CFMarkdownText: View {
                 Text(inlineMarkdown(block.content))
                     .font(CFTheme.body())
                     .foregroundStyle(CFTheme.textPrimary)
+                    .lineSpacing(lineSpacing)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
         case .heading(let level):
             Text(inlineMarkdown(block.content))
                 .font(headingFont(level))
                 .foregroundStyle(CFTheme.textPrimary)
+                .lineSpacing(lineSpacing - 1)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, level <= 2 ? 4 : 0)
+                .padding(.top, headingTopPadding(level))
+                .padding(.bottom, level <= 3 ? 2 : 0)
+        }
+    }
+
+    private func headingTopPadding(_ level: Int) -> CGFloat {
+        switch level {
+        case 1: return 8
+        case 2: return 6
+        case 3: return 4
+        default: return 0
         }
     }
 

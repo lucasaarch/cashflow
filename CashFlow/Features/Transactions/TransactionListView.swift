@@ -3,6 +3,7 @@ import SwiftData
 
 struct TransactionListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var privacy: PrivacyMode
     @Query(sort: [SortDescriptor(\Transaction.occurredOn, order: .reverse),
                   SortDescriptor(\Transaction.createdAt, order: .reverse)])
     private var transactions: [Transaction]
@@ -75,7 +76,7 @@ struct TransactionListView: View {
     }
 
     private var list: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(spacing: 4, pinnedViews: [.sectionHeaders]) {
                 ForEach(groupedByDay, id: \.0) { day, items in
                     Section {
@@ -116,23 +117,21 @@ struct TransactionListView: View {
         HStack {
             Text(dayHeader(day))
                 .font(CFTheme.headline())
-                .foregroundStyle(isRecentDay(day) ? CFTheme.accent : CFTheme.textPrimary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule().fill(isRecentDay(day) ? CFTheme.accent.opacity(0.12) : .clear)
-                )
+                .foregroundStyle(CFTheme.textPrimary)
             Spacer()
-            Text(total.brl)
+            Text(total.brl(masked: privacy.valuesHidden))
                 .font(CFTheme.kpiValue())
-                .foregroundStyle(CFTheme.textSecondary)
+                .foregroundStyle(signedAmountColor(total))
+                .frame(minWidth: TransactionListMetrics.amountColumnMinWidth, alignment: .trailing)
         }
+        .padding(.horizontal, TransactionListMetrics.rowContentInset)
         .padding(.vertical, 8)
-        .background(CFTheme.surfacePrimary.opacity(0.95))
     }
 
-    private func isRecentDay(_ date: Date) -> Bool {
-        Calendar.current.isDateInToday(date) || Calendar.current.isDateInYesterday(date)
+    private func signedAmountColor(_ amount: Decimal) -> Color {
+        if amount > 0 { return CFTheme.income }
+        if amount < 0 { return CFTheme.warning }
+        return CFTheme.textSecondary
     }
 
     private var groupedByDay: [(Date, [Transaction])] {
@@ -152,6 +151,7 @@ struct TransactionListView: View {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) { return "Hoje" }
         if calendar.isDateInYesterday(date) { return "Ontem" }
+        if calendar.isDateInTomorrow(date) { return "Amanhã" }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Money.locale))
             .capitalized
     }

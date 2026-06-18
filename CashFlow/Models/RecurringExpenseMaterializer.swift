@@ -99,6 +99,55 @@ enum RecurringExpenseMaterializer {
         }
     }
 
+    /// Propagates the rule's current fields into existing pending Bills (past + future)
+    /// and unrealized Transactions (future only). Occurrences whose month falls outside
+    /// the rule's `[startDate, endDate]` window are removed. Past paid Bills and past
+    /// realized Transactions are left untouched. Use this when editing a rule WITHOUT
+    /// changing `requiresConfirmation` so the existing entries stay in sync with the rule.
+    static func syncPending(
+        rule: RecurringExpense,
+        context: ModelContext,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) {
+        let startMonth = startOfMonth(for: rule.startDate, calendar: calendar)
+        let endMonth = rule.endDate.map { startOfMonth(for: $0, calendar: calendar) }
+        let resolvedNote = rule.note.isEmpty ? rule.name : rule.note
+
+        for bill in rule.bills where bill.isPending {
+            let billMonth = startOfMonth(for: bill.dueDate, calendar: calendar)
+            if billMonth < startMonth || (endMonth.map { billMonth > $0 } ?? false) {
+                Task { @MainActor [bill] in BillNotifications.cancel(for: bill) }
+                context.delete(bill)
+                continue
+            }
+            bill.name = rule.name
+            bill.amount = rule.amount
+            bill.category = rule.category
+            bill.account = rule.account
+            bill.note = resolvedNote
+            if let newDue = occurrenceDate(forMonthAnchor: billMonth, day: rule.dayOfMonth, calendar: calendar) {
+                bill.dueDate = newDue
+            }
+            Task { @MainActor [bill] in BillNotifications.schedule(for: bill) }
+        }
+
+        for txn in rule.transactions where txn.occurredOn > now {
+            let txnMonth = startOfMonth(for: txn.occurredOn, calendar: calendar)
+            if txnMonth < startMonth || (endMonth.map { txnMonth > $0 } ?? false) {
+                context.delete(txn)
+                continue
+            }
+            txn.amount = rule.amount
+            txn.category = rule.category
+            txn.account = rule.account
+            txn.note = resolvedNote
+            if let newDate = occurrenceDate(forMonthAnchor: txnMonth, day: rule.dayOfMonth, calendar: calendar) {
+                txn.occurredOn = newDate
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private static func monthKey(for date: Date, calendar: Calendar) -> String {

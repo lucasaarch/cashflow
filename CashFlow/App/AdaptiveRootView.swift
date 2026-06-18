@@ -21,14 +21,26 @@ struct AdaptiveRootView: View {
             #endif
         }
         .background(CFTheme.surfacePrimary)
+        .overlay { WidgetSnapshotSync() }
         .onAppear(perform: runStartupTasks)
     }
 
     private func runStartupTasks() {
         AppSettingsBootstrap.ensureExists(context: modelContext)
+        GoalAccountBootstrap.migrateLegacyManualGoals(context: modelContext)
         RecurringExpenseMaterializer.materializeAll(context: modelContext)
+        RecurringIncomeMaterializer.materializeAll(context: modelContext)
         CardStatementMaterializer.materializeAll(context: modelContext)
+        try? modelContext.save()
+        migrateSecureCredentialsIfNeeded()
         Task { await BillNotifications.ensureAuthorization() }
+    }
+
+    private func migrateSecureCredentialsIfNeeded() {
+        for key in [SecureStore.Key.openAIAPIKey, .anthropicAPIKey] {
+            guard let value = SecureStore.read(key) else { continue }
+            try? SecureStore.save(value, for: key)
+        }
     }
 }
 
@@ -51,8 +63,8 @@ private struct CompactTabRootView: View {
             NavigationStack {
                 SidebarDetailView(destination: .transactions)
                     .navigationTitle("Lançamentos")
-                    .aiChatPresentation()
             }
+            .aiChatPresentation()
             .tabItem { Label("Fluxo", systemImage: "list.bullet.rectangle.fill") }
             .tag(CompactTab.flow)
 
@@ -75,17 +87,18 @@ private struct CompactOverviewTab: View {
             List {
                 Section("Visão") {
                     destinationRow(.dashboard)
-                    destinationRow(.reports)
                     destinationRow(.goals)
+                    destinationRow(.wishlist)
+                    destinationRow(.investments)
                 }
             }
             .navigationTitle("CashFlow")
             .navigationDestination(item: $destination) { item in
                 SidebarDetailView(destination: item)
                     .navigationTitle(item.title)
-                    .aiChatPresentation()
             }
         }
+        .aiChatPresentation()
     }
 
     private func destinationRow(_ item: SidebarDestination) -> some View {
@@ -110,9 +123,9 @@ private struct CompactPayablesTab: View {
             .navigationDestination(item: $destination) { item in
                 SidebarDetailView(destination: item)
                     .navigationTitle(item.title)
-                    .aiChatPresentation()
             }
         }
+        .aiChatPresentation()
     }
 
     private func destinationRow(_ item: SidebarDestination) -> some View {
@@ -138,9 +151,9 @@ private struct CompactSettingsTab: View {
             .navigationDestination(item: $destination) { item in
                 SidebarDetailView(destination: item)
                     .navigationTitle(item.title)
-                    .aiChatPresentation()
             }
         }
+        .aiChatPresentation()
     }
 
     private func destinationRow(_ item: SidebarDestination) -> some View {

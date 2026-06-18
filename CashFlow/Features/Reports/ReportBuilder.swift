@@ -90,7 +90,7 @@ struct ReportBuilder {
         monthAnchors.map { month in
             let summary = MonthSummary(
                 referenceDate: month,
-                monthlyIncomeBudget: 0,
+                monthlyIncomeFallback: 0,
                 transactions: transactions,
                 calendar: calendar,
                 now: endOfMonth(for: month)
@@ -156,7 +156,7 @@ struct ReportBuilder {
                 month: month,
                 liquid: overview.liquidBalance,
                 debt: overview.debtBalance,
-                invested: overview.investmentBalance
+                invested: overview.totalInvestedBalance
             )
         }
     }
@@ -173,7 +173,7 @@ struct ReportBuilder {
         monthAnchors.map { month in
             let summary = MonthSummary(
                 referenceDate: month,
-                monthlyIncomeBudget: 0,
+                monthlyIncomeFallback: 0,
                 transactions: transactions,
                 calendar: calendar,
                 now: endOfMonth(for: month)
@@ -203,7 +203,7 @@ struct ReportBuilder {
     var monthComparison: MonthComparison {
         let current = MonthSummary(
             referenceDate: referenceDate,
-            monthlyIncomeBudget: 0,
+            monthlyIncomeFallback: 0,
             transactions: transactions,
             calendar: calendar,
             now: now
@@ -211,7 +211,7 @@ struct ReportBuilder {
         let previousMonth = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
         let previous = MonthSummary(
             referenceDate: previousMonth,
-            monthlyIncomeBudget: 0,
+            monthlyIncomeFallback: 0,
             transactions: transactions,
             calendar: calendar,
             now: endOfMonth(for: previousMonth)

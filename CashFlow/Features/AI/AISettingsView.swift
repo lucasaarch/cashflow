@@ -14,12 +14,13 @@ struct AISettingsView: View {
     @State private var editingProvider: AIProviderID?
     @State private var showingActiveSelection = false
     @State private var showDeleteAllChatsAlert = false
+    @State private var isSyncingModels = false
 
     private var configuration: AIConfiguration { aiService.configuration }
     private var chatService: AIChatService { AIChatService(aiService: aiService) }
 
     var body: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !configuredProviders.isEmpty {
                     activeSection
@@ -46,11 +47,16 @@ struct AISettingsView: View {
             ActiveProviderSheet(
                 activeProvider: $activeProvider,
                 activeModelID: $activeModelID,
-                cachedModels: $cachedModels
+                cachedModels: $cachedModels,
+                isSyncingModels: $isSyncingModels,
+                onSyncModels: { await syncModels() }
             )
             .environmentObject(aiService)
         }
-        .onAppear(perform: loadState)
+        .task {
+            loadState()
+            await syncModels()
+        }
         .alert("Apagar todas as conversas?", isPresented: $showDeleteAllChatsAlert) {
             Button("Apagar", role: .destructive) {
                 chatService.deleteAllConversations(conversations, in: modelContext)
@@ -63,11 +69,33 @@ struct AISettingsView: View {
 
     private var activeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Em uso")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
+            HStack(spacing: 8) {
+                Text("Em uso")
+                    .font(CFTheme.caption())
+                    .foregroundStyle(CFTheme.textSecondary)
+                    .textCase(.uppercase)
+                Spacer(minLength: 0)
+                Button {
+                    Task { await syncModels() }
+                } label: {
+                    Group {
+                        if isSyncingModels {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(CFTheme.textSecondary)
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSyncingModels)
+                .help("Sincronizar modelos")
+            }
+            .padding(.horizontal, 2)
 
             CFHoverRow {
                 activeRowContent
@@ -199,6 +227,36 @@ struct AISettingsView: View {
     private func loadState() {
         activeProvider = configuration.activeProvider
         activeModelID = configuration.activeModelID
+    }
+
+    private func syncModels(providers: [AIProviderID]? = nil) async {
+        guard !isSyncingModels else { return }
+        isSyncingModels = true
+        defer { isSyncingModels = false }
+
+        let targets = providers ?? configuredProviders
+        for provider in targets {
+            do {
+                let models = try await aiService.listModels(for: provider)
+                applyFetchedModels(models, for: provider)
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private func applyFetchedModels(_ models: [AIModel], for provider: AIProviderID) {
+        cachedModels[provider] = models
+        reconcileActiveModel(for: provider, models: models)
+    }
+
+    private func reconcileActiveModel(for provider: AIProviderID, models: [AIModel]) {
+        guard configuration.activeProvider == provider else { return }
+        let currentID = activeModelID ?? configuration.activeModelID
+        if let currentID, models.contains(where: { $0.id == currentID }) { return }
+        guard let first = models.first else { return }
+        activeModelID = first.id
+        configuration.activeModelID = first.id
     }
 }
 
@@ -470,8 +528,9 @@ private struct ProviderConfigSheet: View {
     private func testConnection() async {
         isTesting = true
         defer { isTesting = false }
-        saveOllamaIfNeeded()
         do {
+            try persistCredentialsForTest()
+            saveOllamaIfNeeded()
             let models = try await aiService.listModels(for: provider)
             cachedModels[provider] = models
             statusMessage = "Conexão com sucesso — \(models.count) modelos encontrados."
@@ -479,13 +538,42 @@ private struct ProviderConfigSheet: View {
                 configuration.activeProvider = provider
                 activeProvider = provider
             }
-            if configuration.activeProvider == provider, configuration.activeModelID == nil {
-                let modelID = models.first?.id
-                configuration.activeModelID = modelID
-                activeModelID = modelID
+            if configuration.activeProvider == provider {
+                let currentID = activeModelID ?? configuration.activeModelID
+                if currentID == nil || !models.contains(where: { $0.id == currentID }) {
+                    let modelID = models.first?.id
+                    configuration.activeModelID = modelID
+                    activeModelID = modelID
+                }
             }
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    /// Persists typed API keys before testing so SecureStore is populated.
+    private func persistCredentialsForTest() throws {
+        switch provider {
+        case .openai:
+            let key = openAIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty {
+                try SecureStore.save(key, for: .openAIAPIKey)
+                openAIKey = ""
+                editingOpenAI = false
+            } else if !configuration.isConfigured(.openai) {
+                throw AIError.notConfigured(.openai)
+            }
+        case .anthropic:
+            let key = anthropicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty {
+                try SecureStore.save(key, for: .anthropicAPIKey)
+                anthropicKey = ""
+                editingAnthropic = false
+            } else if !configuration.isConfigured(.anthropic) {
+                throw AIError.notConfigured(.anthropic)
+            }
+        case .ollama:
+            break
         }
     }
 
@@ -505,6 +593,8 @@ private struct ActiveProviderSheet: View {
     @Binding var activeProvider: AIProviderID?
     @Binding var activeModelID: String?
     @Binding var cachedModels: [AIProviderID: [AIModel]]
+    @Binding var isSyncingModels: Bool
+    var onSyncModels: () async -> Void
 
     private var configuration: AIConfiguration { aiService.configuration }
 
@@ -578,7 +668,7 @@ private struct ActiveProviderSheet: View {
                                 )
                             }
                         } else {
-                            Text("Teste a conexão do provedor para carregar os modelos disponíveis.")
+                            Text("Nenhum modelo encontrado. Verifique a conexão ou sincronize novamente.")
                                 .font(CFTheme.caption())
                                 .foregroundStyle(CFTheme.textSecondary)
                         }
@@ -620,7 +710,17 @@ private struct ActiveProviderSheet: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
+            CFPillButton(
+                title: isSyncingModels ? "Sincronizando…" : "Sincronizar modelos",
+                icon: "arrow.clockwise",
+                style: .ghost
+            ) {
+                Task { await onSyncModels() }
+            }
+            .allowsHitTesting(!isSyncingModels)
+
             Spacer()
+
             CFPillButton(title: "Concluído", style: .primary) { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }

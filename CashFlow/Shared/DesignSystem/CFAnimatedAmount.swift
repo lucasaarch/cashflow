@@ -7,9 +7,10 @@ struct CFAnimatedAmount: View {
     var prefix: String = ""
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
-        Text("\(prefix)\(amount.brl)")
+        Text("\(prefix)\(amount.brl(masked: privacy.valuesHidden))")
             .font(font)
             .foregroundStyle(color)
             .monospacedDigit()

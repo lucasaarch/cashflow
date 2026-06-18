@@ -61,7 +61,7 @@ struct GoalListView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !activeGoals.isEmpty {
                     section(title: "Em andamento", goals: activeGoals)

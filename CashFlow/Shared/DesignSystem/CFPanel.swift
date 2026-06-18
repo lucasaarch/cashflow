@@ -18,22 +18,18 @@ struct CFPanel<Content: View>: View {
 
     @ViewBuilder
     private var panelBackground: some View {
-        if colorScheme == .dark {
-            RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                        .stroke(CFTheme.textTertiary.opacity(0.18), lineWidth: 0.5)
-                )
-        } else {
-            RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                .fill(CFTheme.surfaceSecondary)
-                .shadow(color: CFTheme.textPrimary.opacity(0.05), radius: 10, x: 0, y: 2)
-                .overlay(
-                    RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                        .stroke(CFTheme.textTertiary.opacity(0.2), lineWidth: 0.5)
-                )
-        }
+        RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
+            .fill(CFTheme.surfaceSecondary)
+            .overlay(
+                RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
+                    .stroke(CFTheme.textTertiary.opacity(colorScheme == .dark ? 0.22 : 0.2), lineWidth: 0.5)
+            )
+            .shadow(
+                color: CFTheme.textPrimary.opacity(colorScheme == .dark ? 0 : 0.05),
+                radius: 10,
+                x: 0,
+                y: 2
+            )
     }
 }
 
@@ -73,6 +69,7 @@ struct CFPanelSection<Content: View, Trailing: View>: View {
             }
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -81,6 +78,8 @@ struct CFStatChip: View {
     let amount: Decimal
     var tint: Color = CFTheme.textPrimary
     var icon: String?
+
+    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -95,7 +94,7 @@ struct CFStatChip: View {
                     .foregroundStyle(CFTheme.textSecondary)
                     .lineLimit(1)
             }
-            Text(amount.brl)
+            Text(amount.brl(masked: privacy.valuesHidden))
                 .font(.callout.weight(.semibold).monospacedDigit())
                 .foregroundStyle(tint)
                 .lineLimit(1)

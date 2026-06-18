@@ -31,6 +31,7 @@ final class Transaction {
     var account: Account?
     var installmentPlan: InstallmentPlan?
     var recurringSource: RecurringExpense?
+    var recurringIncomeSource: RecurringIncome?
 
     var kind: TransactionKind {
         get { TransactionKind(rawValue: kindRaw) ?? .expense }

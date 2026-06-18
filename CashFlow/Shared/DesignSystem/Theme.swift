@@ -1,17 +1,9 @@
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 enum CFTheme {
-    /// User's macOS accent (System Settings → Appearance).
-    static var accent: Color {
-#if os(macOS)
-        Color(nsColor: NSColor.controlAccentColor)
-#else
-        Color.accentColor
-#endif
-    }
+    static let accent = Color("AccentColor")
+    static let brandGreen = Color("BrandGreen")
+    static let brandTint = Color("BrandTint")
     static let surfacePrimary = Color("SurfacePrimary")
     static let surfaceSecondary = Color("SurfaceSecondary")
     static let surfaceElevated = Color("SurfaceElevated")
@@ -55,12 +47,8 @@ enum CFTheme {
 struct CFPageBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
-            LinearGradient(
-                colors: [CFTheme.gradientTop, CFTheme.gradientBottom],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            CFTheme.surfacePrimary
+                .ignoresSafeArea()
         }
     }
 }

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// App-wide toggle for hiding monetary values from the screen. Useful when the user
@@ -5,18 +6,20 @@ import SwiftUI
 /// Persisted via `@AppStorage` so the state survives launches.
 @MainActor
 final class PrivacyMode: ObservableObject {
-    @AppStorage("privacy.valuesHidden") private var storedValuesHidden: Bool = false
+    private static let storageKey = "privacy.valuesHidden"
 
-    @Published var valuesHidden: Bool
+    @Published var valuesHidden: Bool {
+        didSet {
+            UserDefaults.standard.set(valuesHidden, forKey: Self.storageKey)
+        }
+    }
 
     init() {
-        let initial = UserDefaults.standard.bool(forKey: "privacy.valuesHidden")
-        self.valuesHidden = initial
+        self.valuesHidden = UserDefaults.standard.bool(forKey: Self.storageKey)
     }
 
     func toggle() {
         valuesHidden.toggle()
-        storedValuesHidden = valuesHidden
     }
 
     var iconName: String {
@@ -25,6 +28,19 @@ final class PrivacyMode: ObservableObject {
 
     var helpText: String {
         valuesHidden ? "Mostrar valores" : "Ocultar valores"
+    }
+}
+
+struct PrivacyToggleToolbarButton: View {
+    @EnvironmentObject private var privacy: PrivacyMode
+
+    var body: some View {
+        Button {
+            privacy.toggle()
+        } label: {
+            Image(systemName: privacy.iconName)
+        }
+        .help(privacy.helpText)
     }
 }
 

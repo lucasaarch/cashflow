@@ -9,8 +9,11 @@ enum ModelContainerFactory {
         Account.self,
         InstallmentPlan.self,
         RecurringExpense.self,
+        RecurringIncome.self,
         Bill.self,
+        Receivable.self,
         FinancialGoal.self,
+        WishlistItem.self,
         ChatConversation.self,
         ChatMessage.self
     ])

@@ -9,7 +9,6 @@ struct AccountsView: View {
     @State private var showingAdd = false
     @State private var editingAccount: Account?
     @State private var invoiceAccount: Account?
-    @State private var transferAccount: Account?
 
     var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
@@ -20,7 +19,7 @@ struct AccountsView: View {
     }
 
     /// Order of sections on the screen.
-    private let groupOrder: [AccountKind] = [.bank, .creditCard, .investment]
+    private let groupOrder: [AccountKind] = [.bank, .creditCard, .investment, .goal]
 
     private func activeAccounts(of kind: AccountKind) -> [Account] {
         activeAccounts.filter { $0.kind == kind }
@@ -31,6 +30,7 @@ struct AccountsView: View {
         case .bank:       return "Contas"
         case .creditCard: return "Cartões"
         case .investment: return "Investimentos"
+        case .goal:       return "Metas"
         }
     }
 
@@ -62,9 +62,6 @@ struct AccountsView: View {
         .sheet(item: $invoiceAccount) { account in
             CardInvoiceSheet(account: account)
         }
-        .sheet(item: $transferAccount) { account in
-            InvestmentTransferSheet(investmentAccount: account)
-        }
     }
 
     private var emptyState: some View {
@@ -79,7 +76,7 @@ struct AccountsView: View {
     }
 
     private var accountList: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(groupOrder, id: \.self) { kind in
                     let kindAccounts = activeAccounts(of: kind)
@@ -115,9 +112,7 @@ struct AccountsView: View {
                     switch account.kind {
                     case .creditCard:
                         invoiceAccount = account
-                    case .investment:
-                        transferAccount = account
-                    case .bank:
+                    case .bank, .investment, .goal:
                         editingAccount = account
                     }
                 }
@@ -127,13 +122,6 @@ struct AccountsView: View {
                             invoiceAccount = account
                         } label: {
                             Label("Ver fatura", systemImage: "doc.text")
-                        }
-                    }
-                    if account.kind == .investment {
-                        Button {
-                            transferAccount = account
-                        } label: {
-                            Label("Aportar / Resgatar", systemImage: "arrow.left.arrow.right")
                         }
                     }
                     Button {
@@ -232,14 +220,14 @@ struct AccountsView: View {
             return balance < 0 ? CFTheme.danger : CFTheme.textPrimary
         case .creditCard:
             return CFTheme.debt
-        case .investment:
+        case .investment, .goal:
             return CFTheme.accent
         }
     }
 
     private func displayedBalance(for account: Account, balance: Decimal) -> Decimal {
         switch account.kind {
-        case .bank, .investment:
+        case .bank, .investment, .goal:
             return balance
         case .creditCard:
             return abs(balance)
@@ -256,6 +244,8 @@ struct AccountsView: View {
             return "Crédito"
         case .investment:
             return "Investido"
+        case .goal:
+            return "Reservado"
         }
     }
 
@@ -306,6 +296,7 @@ private struct AccountSheet: View {
         case .creditCard: return "Cartão Inter, Cartão Giovanna…"
         case .investment: return "CDB Inter, Tesouro Selic…"
         case .bank:       return "Banco Inter, Carteira…"
+        case .goal:       return "Caixinha viagem, Reserva…"
         }
     }
 
@@ -314,6 +305,7 @@ private struct AccountSheet: View {
         case .creditCard: return "Fatura em aberto"
         case .investment: return "Saldo investido"
         case .bank:       return "Saldo inicial"
+        case .goal:       return "Saldo reservado"
         }
     }
 
@@ -325,6 +317,8 @@ private struct AccountSheet: View {
             return "Quanto já está devendo neste cartão. Deixe R$ 0,00 se não há fatura pendente."
         case .investment:
             return "Quanto já está aplicado neste investimento. Use R$ 0,00 se vai começar a aportar agora."
+        case .goal:
+            return "Quanto você já guardou pra essa meta. Use R$ 0,00 se vai começar a juntar agora."
         }
     }
 

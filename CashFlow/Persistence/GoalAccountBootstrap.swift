@@ -10,10 +10,9 @@ enum GoalAccountBootstrap {
         let descriptor = FetchDescriptor<FinancialGoal>()
         guard let goals = try? context.fetch(descriptor) else { return }
 
-        let accountDescriptor = FetchDescriptor<Account>(sort: [SortDescriptor(\Account.sortOrder)])
-        var nextSortOrder = ((try? context.fetch(accountDescriptor)) ?? [])
-            .map(\.sortOrder)
-            .max() ?? -1
+        let accountDescriptor = FetchDescriptor<Account>()
+        let existingAccounts = (try? context.fetch(accountDescriptor)) ?? []
+        var nextSortOrder = existingAccounts.map(\.sortOrder).max() ?? -1
 
         for goal in goals {
             guard let manual = goal.manualCurrentAmount,

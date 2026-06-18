@@ -3,6 +3,7 @@ import SwiftData
 
 struct RecurringExpenseListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(sort: [SortDescriptor(\RecurringExpense.createdAt)])
     private var rules: [RecurringExpense]
@@ -58,7 +59,7 @@ struct RecurringExpenseListView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !activeRules.isEmpty {
                     section(title: "Ativas", rules: activeRules)
@@ -129,7 +130,7 @@ struct RecurringExpenseListView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(rule.amount.brl)
+                Text(rule.amount.brl(masked: privacy.valuesHidden))
                     .font(.callout.monospacedDigit().weight(.medium))
                     .foregroundStyle(CFTheme.textPrimary)
                 Text(rule.account?.name ?? "Sem conta")

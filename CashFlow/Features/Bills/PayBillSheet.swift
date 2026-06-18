@@ -7,6 +7,7 @@ import SwiftData
 struct PayBillSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -26,7 +27,7 @@ struct PayBillSheet: View {
     }
 
     private var spendableAccounts: [Account] {
-        accounts.filter { $0.kind != .investment }
+        accounts.filter { $0.kind == .bank || $0.kind == .creditCard }
     }
 
     private var isValid: Bool {
@@ -37,7 +38,7 @@ struct PayBillSheet: View {
         guard paidAmount != bill.amount, bill.amount > 0 else { return nil }
         let delta = paidAmount - bill.amount
         let prefix = delta > 0 ? "+" : "−"
-        return "\(prefix)\(abs(delta).brl) em relação ao previsto"
+        return "\(prefix)\(abs(delta).brl(masked: privacy.valuesHidden)) em relação ao previsto"
     }
 
     var body: some View {
@@ -113,7 +114,7 @@ struct PayBillSheet: View {
                     .foregroundStyle(CFTheme.textSecondary)
             }
             Spacer()
-            Text(bill.amount.brl)
+            Text(bill.amount.brl(masked: privacy.valuesHidden))
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(CFTheme.textSecondary)
         }

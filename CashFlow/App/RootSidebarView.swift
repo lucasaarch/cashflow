@@ -3,6 +3,7 @@ import SwiftData
 
 struct RootSidebarView: View {
     @Query private var allBills: [Bill]
+    @Query private var allReceivables: [Receivable]
 
     var pinSidebar: Bool
 
@@ -27,6 +28,20 @@ struct RootSidebarView: View {
         return pendingBills.count
     }
 
+    private var pendingReceivables: [Receivable] {
+        allReceivables.filter { $0.isPending }
+    }
+
+    private var lateReceivablesCount: Int {
+        let now = Date.now
+        return pendingReceivables.filter { $0.expectedDate < now }.count
+    }
+
+    private var pendingReceivablesCount: Int? {
+        guard !pendingReceivables.isEmpty else { return nil }
+        return pendingReceivables.count
+    }
+
     private var billsSidebarRow: some View {
         HStack {
             Label("Contas a pagar", systemImage: "calendar.badge.clock")
@@ -49,24 +64,51 @@ struct RootSidebarView: View {
         .tag(SidebarDestination.bills)
     }
 
+    private var receivablesSidebarRow: some View {
+        HStack {
+            Label("Contas a receber", systemImage: "tray.and.arrow.down.fill")
+            Spacer(minLength: 0)
+            if lateReceivablesCount > 0 {
+                Text("\(lateReceivablesCount)")
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(CFTheme.warning))
+            } else if let pendingReceivablesCount {
+                Text("\(pendingReceivablesCount)")
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
+        }
+        .tag(SidebarDestination.receivables)
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
                 Section("Visão") {
                     Label("Visão geral", systemImage: "chart.pie.fill")
                         .tag(SidebarDestination.dashboard)
-                    Label("Relatórios", systemImage: "chart.bar.xaxis")
-                        .tag(SidebarDestination.reports)
                     Label("Metas", systemImage: "flag.fill")
                         .tag(SidebarDestination.goals)
+                    Label("Lista de desejos", systemImage: "cart.fill")
+                        .tag(SidebarDestination.wishlist)
+                    Label("Investimentos", systemImage: "chart.line.uptrend.xyaxis")
+                        .tag(SidebarDestination.investments)
                 }
 
                 Section("Movimentações") {
                     Label("Lançamentos", systemImage: "list.bullet.rectangle.fill")
                         .tag(SidebarDestination.transactions)
                     billsSidebarRow
+                    receivablesSidebarRow
                     Label("Despesas fixas", systemImage: "repeat.circle.fill")
                         .tag(SidebarDestination.recurringExpenses)
+                    Label("Rendas fixas", systemImage: "arrow.down.circle.fill")
+                        .tag(SidebarDestination.recurringIncomes)
                 }
 
                 Section("Cadastros") {

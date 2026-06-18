@@ -5,9 +5,13 @@ struct FinancialOverview {
     let liquidBalance: Decimal
     let debtBalance: Decimal
     let investmentBalance: Decimal
+    let goalReservedBalance: Decimal
     let netWorth: Decimal
     let pendingBillsTotal: Decimal
     let overdueBillsCount: Int
+
+    /// Investimentos + saldo reservado em metas.
+    var totalInvestedBalance: Decimal { investmentBalance + goalReservedBalance }
 
     init(
         accounts: [Account],
@@ -30,7 +34,11 @@ struct FinancialOverview {
             .filter { $0.kind == .investment }
             .reduce(0) { $0 + max($1.currentBalance(considering: transactions, asOf: asOf), 0) }
 
-        netWorth = liquidBalance - debtBalance + investmentBalance
+        goalReservedBalance = active
+            .filter { $0.kind == .goal }
+            .reduce(0) { $0 + max($1.currentBalance(considering: transactions, asOf: asOf), 0) }
+
+        netWorth = liquidBalance - debtBalance + investmentBalance + goalReservedBalance
 
         let pending = bills.filter { $0.isPending }
         pendingBillsTotal = pending.reduce(0) { $0 + $1.amount }

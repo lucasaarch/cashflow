@@ -10,11 +10,31 @@ final class AIService: ObservableObject {
         self.configuration = configuration ?? AIConfiguration()
     }
 
+    var activeProviderSupportsTools: Bool {
+        guard let id = configuration.activeProvider else { return false }
+        return (try? makeProvider(id).supportsToolCalls) ?? false
+    }
+
     func listModels(for provider: AIProviderID) async throws -> [AIModel] {
         try await makeProvider(provider).listModels()
     }
 
     func complete(messages: [AIMessage], temperature: Double = 0.4, maxTokens: Int? = nil) async throws -> String {
+        let response = try await completeWithTools(
+            messages: messages,
+            tools: [],
+            temperature: temperature,
+            maxTokens: maxTokens
+        )
+        return response.content
+    }
+
+    func completeWithTools(
+        messages: [AIMessage],
+        tools: [AIToolDefinition],
+        temperature: Double = 0.4,
+        maxTokens: Int? = nil
+    ) async throws -> AICompletionResponse {
         let provider = try activeProvider()
         guard let modelID = configuration.activeModelID else {
             throw AIError.noActiveProvider
@@ -23,10 +43,10 @@ final class AIService: ObservableObject {
             modelID: modelID,
             messages: messages,
             temperature: temperature,
-            maxTokens: maxTokens
+            maxTokens: maxTokens,
+            tools: tools
         )
-        let response = try await provider.complete(request)
-        return response.content
+        return try await provider.complete(request)
     }
 
     func stream(messages: [AIMessage], temperature: Double = 0.4, maxTokens: Int? = nil) -> AsyncThrowingStream<AIStreamChunk, Error> {

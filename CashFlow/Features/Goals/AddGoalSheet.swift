@@ -4,6 +4,7 @@ import SwiftData
 struct AddGoalSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -203,7 +204,7 @@ struct AddGoalSheet: View {
                             .font(CFTheme.caption())
                             .foregroundStyle(CFTheme.textSecondary)
                         Spacer()
-                        Text(linkedBalancePreview.brl)
+                        Text(linkedBalancePreview.brl(masked: privacy.valuesHidden))
                             .font(.callout.weight(.semibold).monospacedDigit())
                             .foregroundStyle(CFTheme.accent)
                     }
@@ -241,7 +242,7 @@ struct AddGoalSheet: View {
                         Text("·")
                             .font(.caption2)
                             .foregroundStyle(CFTheme.textTertiary)
-                        Text(balance.brl)
+                        Text(balance.brl(masked: privacy.valuesHidden))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(CFTheme.textSecondary)
                     }

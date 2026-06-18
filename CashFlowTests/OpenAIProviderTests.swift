@@ -2,9 +2,31 @@ import XCTest
 @testable import CashFlow
 
 final class OpenAIProviderTests: XCTestCase {
+    private var savedOpenAIKey: String?
+
+    override func setUp() {
+        savedOpenAIKey = SecureStore.read(.openAIAPIKey)
+    }
+
     override func tearDown() {
         MockURLProtocol.handler = nil
+        restoreOpenAIKeyIfSaved()
         super.tearDown()
+    }
+
+    /// Restores a key the user had before the test. Never deletes — that would wipe real credentials.
+    private func restoreOpenAIKeyIfSaved() {
+        guard let savedOpenAIKey else { return }
+        try? SecureStore.save(savedOpenAIKey, for: .openAIAPIKey)
+    }
+
+    /// Cleans up after a test that wrote a temporary key.
+    private func cleanupOpenAIKeyAfterTest() {
+        if let savedOpenAIKey {
+            try? SecureStore.save(savedOpenAIKey, for: .openAIAPIKey)
+        } else {
+            SecureStore.delete(.openAIAPIKey)
+        }
     }
 
     func testListModelsFiltersChatModels() async throws {
@@ -21,7 +43,7 @@ final class OpenAIProviderTests: XCTestCase {
             return (response, Data(json.utf8))
         }
         try SecureStore.save("sk-test-key", for: .openAIAPIKey)
-        defer { SecureStore.delete(.openAIAPIKey) }
+        defer { cleanupOpenAIKeyAfterTest() }
 
         let provider = OpenAIProvider(
             configuration: AIConfiguration(),

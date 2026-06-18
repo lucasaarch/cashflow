@@ -23,6 +23,7 @@ final class Receivable {
 
     var category: Category?
     var account: Account?
+    var recurringIncomeSource: RecurringIncome?
 
     var status: ReceivableStatus {
         get { ReceivableStatus(rawValue: statusRaw) ?? .pending }

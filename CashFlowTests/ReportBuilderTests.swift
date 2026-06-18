@@ -65,6 +65,32 @@ final class ReportBuilderTests: XCTestCase {
         XCTAssertEqual(last.netWorth, 3500)
     }
 
+    func testNetWorthIncludesGoalReservedBalance() {
+        let bank = makeBank(openingBalance: 1000)
+        let goal = Account(
+            name: "Viagem",
+            kind: .goal,
+            colorHex: "#000000",
+            symbolName: "flag.fill",
+            sortOrder: 1,
+            openingBalance: 800,
+            openingDate: date(2026, 1, 1)
+        )
+
+        let builder = ReportBuilder(
+            referenceDate: date(2026, 6, 15),
+            period: .threeMonths,
+            transactions: [],
+            accounts: [bank, goal],
+            calendar: calendar,
+            now: date(2026, 6, 15)
+        )
+
+        let last = builder.netWorthSeries.last!
+        XCTAssertEqual(last.invested, 800)
+        XCTAssertEqual(last.netWorth, 1800)
+    }
+
     func testMonthComparisonDelta() {
         let bank = makeBank()
         let txns = [

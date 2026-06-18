@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 enum AIChatPanelPresentation {
-    case sidebarOverlay
+    case inlineColumn
     case sheet
 }
 
@@ -18,15 +18,20 @@ struct AIChatSidePanel: View {
     @Query private var transactions: [Transaction]
     @Query(filter: #Predicate<Account> { !$0.isArchived }) private var accounts: [Account]
     @Query private var goals: [FinancialGoal]
+    @Query(sort: [SortDescriptor(\Bill.dueDate)]) private var bills: [Bill]
+    @Query(sort: [SortDescriptor(\Receivable.expectedDate)]) private var receivables: [Receivable]
+    @Query(sort: [SortDescriptor(\WishlistItem.createdAt, order: .reverse)]) private var wishlistItems: [WishlistItem]
+    @Query(sort: [SortDescriptor(\RecurringExpense.createdAt)]) private var recurringExpenses: [RecurringExpense]
+    @Query(sort: [SortDescriptor(\RecurringIncome.createdAt)]) private var recurringIncomes: [RecurringIncome]
+    @Query(sort: [SortDescriptor(\Category.sortOrder)]) private var categories: [Category]
 
     @Query(filter: #Predicate<AppSettings> { $0.id == "default" })
     private var appSettings: [AppSettings]
 
-    @State private var selectedConversationID: UUID?
-    @State private var draft = ""
     @State private var isSending = false
     @State private var typewriterMessageID: UUID?
     @State private var errorMessage: String?
+    @State private var showingHistory = false
     @State private var showDeleteConversationAlert = false
     @FocusState private var isInputFocused: Bool
 
@@ -34,19 +39,20 @@ struct AIChatSidePanel: View {
     private let presentation: AIChatPanelPresentation
 
     private let suggestions = [
-        "Como está meu ritmo de gastos?",
-        "Onde posso economizar este mês?",
-        "Resuma minha situação financeira"
+        "Como está meu mês até agora?",
+        "Me explica meu saldo projetado",
+        "O que tenho pra pagar essa semana?"
     ]
 
-    init(aiService: AIService, presentation: AIChatPanelPresentation = .sidebarOverlay) {
+    init(aiService: AIService, presentation: AIChatPanelPresentation = .inlineColumn) {
         chatService = AIChatService(aiService: aiService)
         self.presentation = presentation
     }
 
     private var selectedConversation: ChatConversation? {
-        if let id = selectedConversationID {
-            return conversations.first { $0.id == id }
+        if let id = chatPanelState.selectedConversationID,
+           let match = conversations.first(where: { $0.id == id }) {
+            return match
         }
         return conversations.first
     }
@@ -59,14 +65,14 @@ struct AIChatSidePanel: View {
         VStack(spacing: 0) {
             header
             if aiService.configuration.isReady {
-                conversationBar
                 messagesList
+                    .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 inputBar
             } else {
                 setupCTA
             }
         }
-        .frame(maxWidth: presentation == .sidebarOverlay ? 400 : .infinity, maxHeight: .infinity)
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
                 colors: [CFTheme.surfacePrimary, CFTheme.surfacePrimary.opacity(0.96)],
@@ -75,12 +81,23 @@ struct AIChatSidePanel: View {
             )
         )
         .onAppear {
-            if selectedConversationID == nil {
-                selectedConversationID = conversations.first?.id
+            if chatPanelState.selectedConversationID == nil {
+                chatPanelState.selectedConversationID = conversations.first?.id
+            }
+        }
+        .onChange(of: conversations.count) { _, _ in
+            guard let currentID = chatPanelState.selectedConversationID else {
+                chatPanelState.selectedConversationID = conversations.first?.id
+                return
+            }
+            if !conversations.contains(where: { $0.id == currentID }) {
+                chatPanelState.selectedConversationID = conversations.first?.id
             }
         }
         .alert("Apagar esta conversa?", isPresented: $showDeleteConversationAlert) {
-            Button("Apagar", role: .destructive) { deleteSelectedConversation() }
+            Button("Apagar", role: .destructive) {
+                deleteSelectedConversation()
+            }
             Button("Cancelar", role: .cancel) {}
         } message: {
             Text("As mensagens desta conversa serão removidas permanentemente.")
@@ -94,47 +111,33 @@ struct AIChatSidePanel: View {
             CFIconBadge(symbolName: "sparkles", tint: CFTheme.accent, size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Saúde financeira")
+                Text(AIAssistantIdentity.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CFTheme.textPrimary)
-                Text("Assistente com contexto das suas finanças")
+                Text(AIAssistantIdentity.subtitle)
                     .font(.caption2)
                     .foregroundStyle(CFTheme.textSecondary)
             }
 
             Spacer(minLength: 0)
 
-            if selectedConversation != nil {
-                Menu {
-                    Button {
-                        showDeleteConversationAlert = true
-                    } label: {
-                        Label("Apagar conversa", systemImage: "trash")
-                    }
-                    .disabled(conversations.isEmpty)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.body)
-                        .foregroundStyle(CFTheme.textSecondary)
-                        .frame(width: 28, height: 28)
+            if presentation == .sheet {
+                headerIconButton(symbol: "xmark", help: "Fechar") {
+                    chatPanelState.close()
                 }
-                .menuStyle(.borderlessButton)
-                .help("Opções da conversa")
             }
 
-            Button {
-                chatPanelState.close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CFTheme.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+            headerIconButton(symbol: "plus", help: "Nova conversa") {
+                createConversation()
             }
-            .buttonStyle(.plain)
-#if os(macOS)
-            .keyboardShortcut(.escape, modifiers: [])
-#endif
+
+            if selectedConversation != nil {
+                headerIconButton(symbol: "trash", help: "Apagar conversa atual") {
+                    showDeleteConversationAlert = true
+                }
+            }
+
+            historyButton
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -144,67 +147,90 @@ struct AIChatSidePanel: View {
         }
     }
 
-    // MARK: - Conversation bar
+    private func headerIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CFTheme.textSecondary)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
 
-    private var conversationBar: some View {
-        HStack(spacing: 8) {
-            Menu {
+    /// Clock icon doubles as the picker trigger — tapping it opens the conversation
+    /// list popover directly (no intermediate sheet).
+    private var historyButton: some View {
+        Button {
+            showingHistory = true
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CFTheme.textSecondary)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+        }
+        .buttonStyle(.plain)
+        .help("Histórico de conversas")
+        .disabled(conversations.isEmpty)
+        .cfAdaptivePicker(isPresented: $showingHistory, arrowEdge: .top, sheetTitle: "Histórico") {
+            historyPickerContent
+        }
+    }
+
+    private var historyPickerContent: some View {
+        ScrollView {
+            VStack(spacing: 6) {
                 ForEach(conversations) { conversation in
-                    Button {
-                        withAnimation(CFMotion.snappy) {
-                            selectedConversationID = conversation.id
-                        }
-                    } label: {
-                        if conversation.id == selectedConversation?.id {
-                            Label(conversation.title, systemImage: "checkmark")
-                        } else {
-                            Text(conversation.title)
+                    conversationRow(conversation)
+                }
+            }
+            .padding(12)
+            .cfScrollContent()
+        }
+        .cfScrollChrome()
+        .frame(width: 280, height: 320)
+    }
+
+    private func conversationRow(_ conversation: ChatConversation) -> some View {
+        let isSelected = chatPanelState.selectedConversationID == conversation.id
+
+        return Button {
+            chatPanelState.selectedConversationID = conversation.id
+            showingHistory = false
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(CFTheme.accent)
+                    .frame(width: 24)
+                Text(conversation.title)
+                    .font(CFTheme.body())
+                    .foregroundStyle(CFTheme.textPrimary)
+                    .lineLimit(1)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CFTheme.accent)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? CFTheme.accent.opacity(0.18) : CFTheme.surfaceElevated.opacity(0.4))
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(CFTheme.accent.opacity(0.35), lineWidth: 1)
                         }
                     }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.caption)
-                        .foregroundStyle(CFTheme.accent)
-                    Text(selectedConversation?.title ?? "Nova conversa")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(CFTheme.textPrimary)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CFTheme.textTertiary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(CFTheme.surfaceElevated.opacity(0.45))
-                )
             }
-            .menuStyle(.borderlessButton)
-
-            Button {
-                let conversation = chatService.createConversation(in: modelContext)
-                withAnimation(CFMotion.snappy) {
-                    selectedConversationID = conversation.id
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CFTheme.accent)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(CFTheme.accent.opacity(0.12))
-                    )
-            }
-            .buttonStyle(.plain)
-            .help("Nova conversa")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .buttonStyle(.plain)
     }
 
     // MARK: - Messages
@@ -225,10 +251,21 @@ struct AIChatSidePanel: View {
                     if let errorMessage {
                         errorBanner(errorMessage)
                     }
+
+                    if let pending = chatPanelState.pendingWrite {
+                        writeConfirmationCard(pending)
+                    }
+
+                    if let status = chatPanelState.toolStatusMessage, isSending {
+                        toolStatusBanner(status)
+                    }
                 }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
+                .cfScrollContent()
             }
+            .cfScrollChrome()
             .onChange(of: sortedMessages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: sortedMessages.last?.content) { _, _ in scrollToBottom(proxy) }
         }
@@ -240,7 +277,7 @@ struct AIChatSidePanel: View {
                 Text("Pergunte qualquer coisa")
                     .font(.headline)
                     .foregroundStyle(CFTheme.textPrimary)
-                Text("O assistente analisa seus lançamentos, contas, metas e ritmo de gastos.")
+                Text("\(AIAssistantIdentity.name) conhece seus lançamentos, contas e metas — converse no seu ritmo.")
                     .font(.callout)
                     .foregroundStyle(CFTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -254,7 +291,7 @@ struct AIChatSidePanel: View {
 
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
                     Button {
-                        draft = suggestion
+                        chatPanelState.draft = suggestion
                         Task { await send() }
                     } label: {
                         HStack(spacing: 8) {
@@ -294,15 +331,19 @@ struct AIChatSidePanel: View {
                 assistantBubble(message)
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .cfStaggerAppear(index: index)
     }
 
     private func userBubble(_ message: ChatMessage) -> some View {
-        HStack {
+        HStack(alignment: .top) {
             Spacer(minLength: 48)
             Text(message.content)
                 .font(CFTheme.body())
                 .foregroundStyle(CFTheme.textPrimary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
@@ -320,32 +361,50 @@ struct AIChatSidePanel: View {
                         .stroke(CFTheme.accent.opacity(0.2), lineWidth: 1)
                 )
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
     }
 
     @ViewBuilder
     private func assistantBubble(_ message: ChatMessage) -> some View {
         let isStreaming = isSending && message.role == .assistant && message.id == sortedMessages.last?.id
-        let useTypewriter = typewriterMessageID == message.id && !isStreaming
+        let alreadyPlayed = chatPanelState.typedMessageIDs.contains(message.id)
+        let useTypewriter = typewriterMessageID == message.id && !isStreaming && !alreadyPlayed
 
         HStack(alignment: .top, spacing: 10) {
             CFIconBadge(symbolName: "sparkles", tint: CFTheme.accent, size: 28)
 
-            VStack(alignment: .leading, spacing: 0) {
-                if isStreaming {
-                    assistantSkeleton
-                } else if useTypewriter {
-                    CFTypewriter(text: message.content, markdown: true, animated: true)
-                        .font(CFTheme.body())
-                        .foregroundStyle(CFTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(3)
-                } else {
-                    CFMarkdownText(text: message.content)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AIAssistantIdentity.name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CFTheme.accent)
+
+                Group {
+                    if isStreaming, message.content.isEmpty {
+                        CFThinkingDots()
+                    } else if useTypewriter {
+                        CFTypewriter(
+                            text: message.content,
+                            markdown: true,
+                            animated: true,
+                            onComplete: {
+                                chatPanelState.typedMessageIDs.insert(message.id)
+                                if typewriterMessageID == message.id {
+                                    typewriterMessageID = nil
+                                }
+                            }
+                        )
+                            .font(CFTheme.body())
+                            .foregroundStyle(CFTheme.textPrimary)
+                            .lineSpacing(4)
+                    } else {
+                        CFMarkdownText(text: message.content)
+                    }
                 }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(CFTheme.surfaceElevated.opacity(0.5))
@@ -355,17 +414,9 @@ struct AIChatSidePanel: View {
                     .stroke(CFTheme.textTertiary.opacity(0.1), lineWidth: 1)
             )
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 0)
         }
-    }
-
-    private var assistantSkeleton: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CFSkeletonLine(height: 10, widthFraction: 0.92)
-            CFSkeletonLine(height: 10, widthFraction: 0.78)
-            CFSkeletonLine(height: 10, widthFraction: 0.55)
-        }
-        .padding(.vertical, 4)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -384,6 +435,58 @@ struct AIChatSidePanel: View {
         )
     }
 
+    private func toolStatusBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(message)
+                .font(CFTheme.caption())
+                .foregroundStyle(CFTheme.textSecondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(CFTheme.surfaceElevated.opacity(0.45))
+        )
+    }
+
+    private func writeConfirmationCard(_ pending: AIPendingWriteAction) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                CFIconBadge(symbolName: "hand.raised.fill", tint: CFTheme.warning, size: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(AIAssistantIdentity.name) quer fazer uma ação")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CFTheme.textPrimary)
+                    Text(pending.summary)
+                        .font(.callout)
+                        .foregroundStyle(CFTheme.textSecondary)
+                }
+            }
+
+            HStack(spacing: 10) {
+                CFPillButton(title: "Cancelar", style: .ghost) {
+                    chatPanelState.pendingWrite = nil
+                    chatPanelState.agentMessages = []
+                }
+                CFPillButton(title: "Confirmar", style: .primary) {
+                    Task { await confirmPendingWrite(pending) }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(CFTheme.warning.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(CFTheme.warning.opacity(0.25), lineWidth: 1)
+        )
+    }
+
     // MARK: - Input
 
     private var inputBar: some View {
@@ -391,11 +494,13 @@ struct AIChatSidePanel: View {
             Divider().opacity(0.5)
 
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Pergunte sobre suas finanças…", text: $draft, axis: .vertical)
+                TextField("Converse com \(AIAssistantIdentity.name)…", text: $chatPanelState.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(CFTheme.body())
                     .lineLimit(1...5)
                     .focused($isInputFocused)
+                    .onSubmit { Task { await send() } }
+                    .submitLabel(.send)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
                     .background(
@@ -420,7 +525,7 @@ struct AIChatSidePanel: View {
     }
 
     private var sendButton: some View {
-        let canSend = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+        let canSend = !chatPanelState.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
 
         return Button {
             Task { await send() }
@@ -447,9 +552,6 @@ struct AIChatSidePanel: View {
         .buttonStyle(.plain)
         .disabled(!canSend)
         .help("Enviar")
-#if os(macOS)
-        .keyboardShortcut(.return, modifiers: [])
-#endif
     }
 
     private var setupCTA: some View {
@@ -459,7 +561,7 @@ struct AIChatSidePanel: View {
             Text("Configure um provedor de IA")
                 .font(.headline)
                 .foregroundStyle(CFTheme.textPrimary)
-            Text("Vá em Inteligência nas configurações para conectar OpenAI, Anthropic ou Ollama.")
+            Text("Vá em Inteligência nas configurações para conversar com \(AIAssistantIdentity.name).")
                 .font(.callout)
                 .foregroundStyle(CFTheme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -470,31 +572,100 @@ struct AIChatSidePanel: View {
 
     // MARK: - Actions
 
+    private func createConversation() {
+        let conversation = chatService.createConversation(in: modelContext)
+        withAnimation(CFMotion.snappy) {
+            chatPanelState.selectedConversationID = conversation.id
+        }
+    }
+
     private func send() async {
         guard aiService.configuration.isReady else { return }
         var conversation = selectedConversation
         if conversation == nil {
             conversation = chatService.createConversation(in: modelContext)
-            selectedConversationID = conversation?.id
+            chatPanelState.selectedConversationID = conversation?.id
         }
         guard let conversation else { return }
 
         isSending = true
         errorMessage = nil
         typewriterMessageID = nil
-        let text = draft
-        draft = ""
+        let text = chatPanelState.draft
+        chatPanelState.draft = ""
 
         do {
-            if let assistantID = try await chatService.sendMessage(
+            let result = try await chatService.sendMessage(
                 text,
                 in: conversation,
                 transactions: transactions,
                 accounts: accounts,
+                bills: bills,
+                receivables: receivables,
                 goals: goals,
+                wishlistItems: wishlistItems,
+                recurringExpenses: recurringExpenses,
+                recurringIncomes: recurringIncomes,
+                categories: categories,
                 monthlyIncomeCents: appSettings.first?.monthlyIncomeCents ?? 0,
-                context: modelContext
-            ) {
+                context: modelContext,
+                onStatus: { update in
+                    if update.isExecutingTools, let toolName = update.toolName {
+                        chatPanelState.toolStatusMessage = toolStatusLabel(for: toolName)
+                    } else {
+                        chatPanelState.toolStatusMessage = nil
+                    }
+                },
+                onPartialContent: nil
+            )
+            chatPanelState.toolStatusMessage = nil
+            chatPanelState.agentMessages = result.agentMessages
+            chatPanelState.pendingWrite = result.pendingWrite
+            if let assistantID = result.assistantMessageID {
+                typewriterMessageID = assistantID
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            chatPanelState.toolStatusMessage = nil
+        }
+        isSending = false
+    }
+
+    private func confirmPendingWrite(_ pending: AIPendingWriteAction) async {
+        guard let conversation = selectedConversation else { return }
+        isSending = true
+        errorMessage = nil
+        chatPanelState.pendingWrite = nil
+
+        do {
+            let result = try await chatService.confirmPendingWrite(
+                pending,
+                agentMessages: chatPanelState.agentMessages,
+                in: conversation,
+                transactions: transactions,
+                accounts: accounts,
+                bills: bills,
+                receivables: receivables,
+                goals: goals,
+                wishlistItems: wishlistItems,
+                recurringExpenses: recurringExpenses,
+                recurringIncomes: recurringIncomes,
+                categories: categories,
+                monthlyIncomeCents: appSettings.first?.monthlyIncomeCents ?? 0,
+                context: modelContext,
+                onStatus: { update in
+                    if update.isExecutingTools, let toolName = update.toolName {
+                        chatPanelState.toolStatusMessage = toolStatusLabel(for: toolName)
+                    } else {
+                        chatPanelState.toolStatusMessage = nil
+                    }
+                },
+                onPartialContent: nil
+            )
+            chatPanelState.toolStatusMessage = nil
+            chatPanelState.agentMessages = result.agentMessages
+            chatPanelState.pendingWrite = result.pendingWrite
+            if let assistantID = result.assistantMessageID {
                 typewriterMessageID = assistantID
             }
         } catch {
@@ -503,11 +674,32 @@ struct AIChatSidePanel: View {
         isSending = false
     }
 
+    private func toolStatusLabel(for toolName: String) -> String {
+        switch toolName {
+        case let name where name.hasPrefix("get_goal") || name == "list_goals":
+            return "Consultando suas metas…"
+        case let name where name.contains("wishlist"):
+            return "Consultando lista de desejos…"
+        case let name where name.contains("bill"):
+            return "Consultando contas a pagar…"
+        case let name where name.contains("receivable"):
+            return "Consultando contas a receber…"
+        case let name where name.contains("transaction"):
+            return "Consultando lançamentos…"
+        case "get_patrimony", "list_accounts":
+            return "Consultando patrimônio…"
+        case let name where name.contains("month"):
+            return "Consultando o mês…"
+        default:
+            return "Consultando seus dados…"
+        }
+    }
+
     private func deleteSelectedConversation() {
         guard let conversation = selectedConversation else { return }
         let deletingID = conversation.id
         chatService.deleteConversation(conversation, in: modelContext)
-        selectedConversationID = conversations.first(where: { $0.id != deletingID })?.id
+        chatPanelState.selectedConversationID = conversations.first(where: { $0.id != deletingID })?.id
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

@@ -6,19 +6,34 @@ struct DashboardMonthPanel: View {
     @Binding var editingIncome: Bool
     @Binding var monthlyIncomeCents: Int
 
+    @EnvironmentObject private var privacy: PrivacyMode
+
     private var monthBalance: Decimal {
         summary.totalIncome - summary.totalExpense
+    }
+
+    private var hasPlannedRow: Bool {
+        summary.hasPlanned
+    }
+
+    /// Show the manual income editor only when no real data is feeding `expectedIncome`.
+    /// Once the user has recurring income / receivables / realized income, the fallback
+    /// becomes irrelevant.
+    private var showsBudgetButton: Bool {
+        summary.usesFallbackIncome
     }
 
     var body: some View {
         CFPanel {
             CFPanelSection(title: "Fluxo do mês", subtitle: "Realizado no período selecionado") {
-                CFPillButton(
-                    title: monthlyIncomeCents == 0 ? "Orçamento" : "Editar orçamento",
-                    icon: monthlyIncomeCents == 0 ? "plus.circle" : "pencil",
-                    style: .ghost
-                ) {
-                    editingIncome.toggle()
+                if showsBudgetButton {
+                    CFPillButton(
+                        title: monthlyIncomeCents == 0 ? "Definir renda" : "Editar renda",
+                        icon: monthlyIncomeCents == 0 ? "plus.circle" : "pencil",
+                        style: .ghost
+                    ) {
+                        editingIncome.toggle()
+                    }
                 }
             } content: {
                 HStack(spacing: 8) {
@@ -32,10 +47,13 @@ struct DashboardMonthPanel: View {
                     )
                 }
 
-                if summary.hasPlanned {
+                if hasPlannedRow {
                     HStack(spacing: 12) {
                         if summary.plannedIncome > 0 {
                             plannedLabel("Prev. entrada", amount: summary.plannedIncome, tint: CFTheme.income)
+                        }
+                        if summary.pendingReceivableIncome > 0 {
+                            plannedLabel("A receber", amount: summary.pendingReceivableIncome, tint: CFTheme.accent)
                         }
                         if summary.plannedExpense > 0 {
                             plannedLabel("Prev. saída", amount: summary.plannedExpense, tint: CFTheme.expense)
@@ -46,13 +64,20 @@ struct DashboardMonthPanel: View {
                     .padding(.top, 2)
                 }
 
+                if summary.expectedIncome > 0 {
+                    Text("Esperado no mês: \(summary.expectedIncome.brl(masked: privacy.valuesHidden))")
+                        .font(.caption2)
+                        .foregroundStyle(CFTheme.textSecondary)
+                        .padding(.top, 2)
+                }
+
                 if showsPace {
                     CFPanelDivider()
                     DashboardPaceInline(summary: summary)
                 }
             }
         }
-        .cfAdaptivePicker(isPresented: $editingIncome, arrowEdge: .top, sheetTitle: "Renda mensal") {
+        .cfAdaptivePicker(isPresented: $editingIncome, arrowEdge: .top, sheetTitle: "Renda esperada (fallback)") {
             MonthlyIncomeEditor(cents: $monthlyIncomeCents)
                 .frame(width: 300)
         }
@@ -61,7 +86,7 @@ struct DashboardMonthPanel: View {
     private func plannedLabel(_ label: String, amount: Decimal, tint: Color) -> some View {
         HStack(spacing: 4) {
             Circle().fill(tint.opacity(0.6)).frame(width: 5, height: 5)
-            Text("\(label) \(amount.brl)")
+            Text("\(label) \(amount.brl(masked: privacy.valuesHidden))")
         }
     }
 }
@@ -69,6 +94,7 @@ struct DashboardMonthPanel: View {
 private struct DashboardPaceInline: View {
     let summary: MonthSummary
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var privacy: PrivacyMode
     @State private var pulse = false
 
     var body: some View {
@@ -83,7 +109,7 @@ private struct DashboardPaceInline: View {
                     .foregroundStyle(CFTheme.paceColor(for: summary.paceState))
                 Spacer()
                 if summary.daysRemaining > 0 {
-                    Text("\(summary.dailyBudgetRemaining.brl)/dia")
+                    Text("\(summary.dailyBudgetRemaining.brl(masked: privacy.valuesHidden))/dia")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(CFTheme.textSecondary)
                 }

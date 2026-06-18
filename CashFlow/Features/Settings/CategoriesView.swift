@@ -59,7 +59,7 @@ struct CategoriesView: View {
     }
 
     private var categoryList: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !expenseCategories.isEmpty {
                     categorySection(title: "Despesas", items: expenseCategories, tint: CFTheme.expense)

@@ -3,6 +3,7 @@ import SwiftData
 
 struct BillListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(sort: [SortDescriptor(\Bill.dueDate)])
     private var bills: [Bill]
@@ -11,6 +12,7 @@ struct BillListView: View {
     @State private var editingBill: Bill?
     @State private var payingBill: Bill?
     @State private var payingInvoiceBill: Bill?
+    @State private var reschedulingBill: Bill?
     @State private var searchText = ""
 
     private var filteredBills: [Bill] {
@@ -67,6 +69,16 @@ struct BillListView: View {
                 PayInvoiceSheet(card: card, maxAmount: bill.amount, linkedBill: bill)
             }
         }
+        .sheet(item: $reschedulingBill) { bill in
+            RescheduleSheet(
+                title: "Reagendar vencimento",
+                subtitle: bill.name,
+                initialDate: bill.dueDate
+            ) { newDate in
+                bill.dueDate = Calendar.current.startOfDay(for: newDate)
+                BillNotifications.schedule(for: bill)
+            }
+        }
         .onAppear {
             CardStatementMaterializer.materializeAll(context: modelContext)
         }
@@ -85,7 +97,7 @@ struct BillListView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !overdue.isEmpty {
                     section(title: "Vencidas", tint: CFTheme.danger, bills: overdue)
@@ -137,6 +149,11 @@ struct BillListView: View {
                             )
                         }
                         if !bill.isCardStatement {
+                            Button {
+                                reschedulingBill = bill
+                            } label: {
+                                Label("Reagendar", systemImage: "calendar.badge.clock")
+                            }
                             Button {
                                 bill.status = .cancelled
                                 BillNotifications.cancel(for: bill)
@@ -194,7 +211,7 @@ struct BillListView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(bill.amount.brl)
+                Text(bill.amount.brl(masked: privacy.valuesHidden))
                     .font(.callout.monospacedDigit().weight(.medium))
                     .foregroundStyle(bill.isPaid ? CFTheme.textSecondary : CFTheme.textPrimary)
                 if let trailingAccount = bill.cardStatementSource ?? bill.account {
@@ -222,18 +239,17 @@ struct BillListView: View {
     }
 
     private func subtitle(for bill: Bill) -> String {
-        let formatter = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(Money.locale)
         if bill.isPaid, let paid = bill.paidOn {
-            return bill.isCardStatement
-                ? "Fatura paga em \(paid.formatted(formatter))"
-                : "Paga em \(paid.formatted(formatter))"
+            let when = paid.cfRelativeOrAbsoluteDay()
+            return bill.isCardStatement ? "Fatura paga \(when)" : "Paga \(when)"
         }
+        let due = bill.dueDate.cfRelativeOrAbsoluteDay()
         if bill.isOverdue() {
-            return "Venceu \(bill.dueDate.formatted(formatter))"
+            return "Venceu \(due)"
         }
         if bill.isCardStatement {
-            return "Fatura · vence \(bill.dueDate.formatted(formatter))"
+            return "Fatura · vence \(due)"
         }
-        return "Vence \(bill.dueDate.formatted(formatter))"
+        return "Vence \(due)"
     }
 }

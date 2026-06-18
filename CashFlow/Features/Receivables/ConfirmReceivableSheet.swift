@@ -7,6 +7,7 @@ import SwiftData
 struct ConfirmReceivableSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -37,7 +38,7 @@ struct ConfirmReceivableSheet: View {
         guard receivedAmount != receivable.amount, receivable.amount > 0 else { return nil }
         let delta = receivedAmount - receivable.amount
         let prefix = delta > 0 ? "+" : "−"
-        return "\(prefix)\(abs(delta).brl) em relação ao previsto"
+        return "\(prefix)\(abs(delta).brl(masked: privacy.valuesHidden)) em relação ao previsto"
     }
 
     var body: some View {
@@ -113,7 +114,7 @@ struct ConfirmReceivableSheet: View {
                     .foregroundStyle(CFTheme.textSecondary)
             }
             Spacer()
-            Text(receivable.amount.brl)
+            Text(receivable.amount.brl(masked: privacy.valuesHidden))
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(CFTheme.textSecondary)
         }
@@ -215,5 +216,6 @@ struct ConfirmReceivableSheet: View {
         receivable.status = .received
         receivable.receivedOn = normalizedDate
         receivable.receivedTransactionID = txn.id
+        ReceivableNotifications.cancel(for: receivable)
     }
 }

@@ -65,7 +65,7 @@ struct AddRecurringExpenseSheet: View {
     }
 
     private var spendableAccounts: [Account] {
-        accounts.filter { $0.kind != .investment }
+        accounts.filter { $0.kind == .bank || $0.kind == .creditCard }
     }
 
     private var isValid: Bool {
@@ -265,8 +265,14 @@ struct AddRecurringExpenseSheet: View {
         let normalizedStart = Calendar.current.startOfDay(for: startDate)
 
         if let editing {
-            // Editing a rule: nuke unrealized future occurrences and rebuild from new params.
-            RecurringExpenseMaterializer.deleteUnrealizedOccurrences(rule: editing, context: modelContext)
+            // If `requiresConfirmation` toggled, existing pending entries have the wrong
+            // type (Bill ↔ Transaction). Delete future-unrealized ones so materialize
+            // recreates them in the new mode. Otherwise propagate field changes in-place
+            // so past pending Bills (overdue) also pick up the new amount/category/etc.
+            let requiresConfirmationChanged = editing.requiresConfirmation != requiresConfirmation
+            if requiresConfirmationChanged {
+                RecurringExpenseMaterializer.deleteUnrealizedOccurrences(rule: editing, context: modelContext)
+            }
             editing.name = trimmedName
             editing.amount = amount
             editing.dayOfMonth = dayOfMonth
@@ -275,6 +281,9 @@ struct AddRecurringExpenseSheet: View {
             editing.requiresConfirmation = requiresConfirmation
             editing.category = category
             editing.account = account
+            if !requiresConfirmationChanged {
+                RecurringExpenseMaterializer.syncPending(rule: editing, context: modelContext)
+            }
             RecurringExpenseMaterializer.materialize(
                 rule: editing,
                 horizon: Date.now.addingTimeInterval(RecurringExpenseMaterializer.defaultHorizon),

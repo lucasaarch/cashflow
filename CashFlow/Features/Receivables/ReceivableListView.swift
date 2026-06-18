@@ -3,6 +3,7 @@ import SwiftData
 
 struct ReceivableListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(sort: [SortDescriptor(\Receivable.expectedDate)])
     private var receivables: [Receivable]
@@ -69,6 +70,7 @@ struct ReceivableListView: View {
                 initialDate: receivable.expectedDate
             ) { newDate in
                 receivable.expectedDate = Calendar.current.startOfDay(for: newDate)
+                ReceivableNotifications.schedule(for: receivable)
             }
         }
         .cfPageBackground()
@@ -86,7 +88,7 @@ struct ReceivableListView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        CFScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if !late.isEmpty {
                     section(title: "Atrasadas", tint: CFTheme.warning, items: late)
@@ -141,6 +143,7 @@ struct ReceivableListView: View {
                         }
                         Button {
                             receivable.status = .cancelled
+                            ReceivableNotifications.cancel(for: receivable)
                         } label: {
                             Label("Cancelar recebível", systemImage: "xmark.circle")
                         }
@@ -151,6 +154,7 @@ struct ReceivableListView: View {
                         Label("Editar", systemImage: "pencil")
                     }
                     Button(role: .destructive) {
+                        ReceivableNotifications.cancel(for: receivable)
                         modelContext.delete(receivable)
                     } label: {
                         Label("Excluir", systemImage: "trash")
@@ -185,7 +189,7 @@ struct ReceivableListView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(receivable.amount.brl)
+                Text(receivable.amount.brl(masked: privacy.valuesHidden))
                     .font(.callout.monospacedDigit().weight(.medium))
                     .foregroundStyle(receivable.isReceived ? CFTheme.textSecondary : CFTheme.income)
                 if let account = receivable.account {
@@ -209,13 +213,13 @@ struct ReceivableListView: View {
     }
 
     private func subtitle(for receivable: Receivable) -> String {
-        let formatter = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(Money.locale)
         if receivable.isReceived, let receivedOn = receivable.receivedOn {
-            return "Recebido em \(receivedOn.formatted(formatter))"
+            return "Recebido \(receivedOn.cfRelativeOrAbsoluteDay())"
         }
+        let expected = receivable.expectedDate.cfRelativeOrAbsoluteDay()
         if receivable.isLate() {
-            return "Esperado \(receivable.expectedDate.formatted(formatter))"
+            return "Esperado \(expected)"
         }
-        return "Previsto \(receivable.expectedDate.formatted(formatter))"
+        return "Previsto \(expected)"
     }
 }

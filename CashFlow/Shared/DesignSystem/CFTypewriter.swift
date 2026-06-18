@@ -8,6 +8,7 @@ struct CFTypewriter: View {
     var markdown: Bool = false
     var animated: Bool = true
     var charactersPerSecond: Double = 110
+    var onComplete: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealedCount: Int = 0
@@ -24,6 +25,8 @@ struct CFTypewriter: View {
                 Text(text)
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .task(id: text) { await runReveal() }
         .task(id: text) { await runCaret() }
     }
@@ -48,6 +51,7 @@ struct CFTypewriter: View {
         guard shouldAnimate else {
             revealedCount = plainText.count
             isComplete = true
+            onComplete?()
             return
         }
         isComplete = false
@@ -60,6 +64,7 @@ struct CFTypewriter: View {
             revealedCount = min(revealedCount + 1, total)
         }
         isComplete = true
+        onComplete?()
     }
 
     private func runCaret() async {
