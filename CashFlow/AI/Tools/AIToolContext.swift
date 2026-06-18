@@ -12,7 +12,8 @@ struct AIToolContext {
     let recurringIncomes: [RecurringIncome]
     let categories: [Category]
     let wishlistItems: [WishlistItem]
-    let monthlyIncomeCents: Int
+    var dashboardInsightMonthKey: String?
+    var wishlistInsightMonthKey: String?
     var calendar: Calendar = .current
     var now: Date = .now
 
@@ -29,7 +30,6 @@ struct AIToolContext {
     func monthSummary(referenceDate: Date? = nil) -> MonthSummary {
         MonthSummary(
             referenceDate: referenceDate ?? now,
-            monthlyIncomeFallback: Decimal(monthlyIncomeCents) / 100,
             transactions: transactions,
             pendingReceivables: receivables,
             calendar: calendar,

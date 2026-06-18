@@ -6,7 +6,6 @@ enum AIToolCatalog {
     static let readTools: [AIToolDefinition] = [
         // A
         AIToolDefinition(name: "get_app_context", description: "Data/hora atual, mês de referência, moeda BRL e regras realizado vs previsto."),
-        AIToolDefinition(name: "get_app_settings", description: "Renda mensal fallback configurada manualmente."),
         // B
         AIToolDefinition(
             name: "get_patrimony",
@@ -41,6 +40,22 @@ enum AIToolCatalog {
             name: "get_month_pace",
             description: "Ritmo de gastos, % da renda, dias restantes e orçamento diário.",
             parameters: [.init(name: "reference_date", type: "string", description: "Data no mês de referência", required: false)]
+        ),
+        AIToolDefinition(
+            name: "get_dashboard_insight",
+            description: "Resumo mensal da Gio salvo no painel Visão geral (texto em bullets). Use quando o usuário quiser conversar sobre o resumo do dashboard.",
+            parameters: [
+                .init(name: "month_key", type: "string", description: "Mês no formato yyyy-MM", required: false),
+                .init(name: "reference_date", type: "string", description: "Qualquer data dentro do mês desejado", required: false)
+            ]
+        ),
+        AIToolDefinition(
+            name: "get_wishlist_insight",
+            description: "Sugestão da Gio sobre a lista de desejos salva no painel Visão geral. Use quando o usuário quiser conversar sobre timing de compras.",
+            parameters: [
+                .init(name: "month_key", type: "string", description: "Mês no formato yyyy-MM", required: false),
+                .init(name: "reference_date", type: "string", description: "Qualquer data dentro do mês desejado", required: false)
+            ]
         ),
         AIToolDefinition(
             name: "compare_months",

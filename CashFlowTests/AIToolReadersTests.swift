@@ -6,11 +6,32 @@ import XCTest
 final class AIToolReadersTests: XCTestCase {
     private var container: ModelContainer!
     private var context: ModelContext!
+    private var insightTestMonthKeys: [String] = []
 
     override func setUp() {
         super.setUp()
         container = PreviewData.container
         context = container.mainContext
+        insightTestMonthKeys = []
+    }
+
+    override func tearDown() {
+        for monthKey in insightTestMonthKeys {
+            AIInsightsService.clearCachedInsight(monthKey: monthKey)
+            AIWishlistInsightService.clearCachedInsight(monthKey: monthKey)
+        }
+        insightTestMonthKeys = []
+        super.tearDown()
+    }
+
+    private func cacheDashboardInsight(_ text: String, monthKey: String) {
+        insightTestMonthKeys.append(monthKey)
+        AIInsightsService.cacheInsight(text, monthKey: monthKey)
+    }
+
+    private func cacheWishlistInsight(_ text: String, monthKey: String) {
+        insightTestMonthKeys.append(monthKey)
+        AIWishlistInsightService.cacheInsight(text, monthKey: monthKey)
     }
 
     func testGetAppContext() throws {
@@ -134,6 +155,105 @@ final class AIToolReadersTests: XCTestCase {
         XCTAssertTrue(byCategory.ok)
     }
 
+    func testGetDashboardInsightReturnsCachedSummary() throws {
+        let monthKey = "2099-01"
+        cacheDashboardInsight("- Gastou acima do ritmo.\n- Saldo negativo.", monthKey: monthKey)
+
+        var toolContext = makeToolContext()
+        toolContext.dashboardInsightMonthKey = monthKey
+        let result = try AIToolReaders.execute(name: "get_dashboard_insight", args: [:], context: toolContext)
+        XCTAssertTrue(result.ok)
+        if case .object(let payload) = result.data {
+            if case .bool(let available) = payload["available"] {
+                XCTAssertTrue(available)
+            } else {
+                XCTFail("available ausente")
+            }
+            if case .string(let key) = payload["month_key"] {
+                XCTAssertEqual(key, monthKey)
+            } else {
+                XCTFail("month_key ausente")
+            }
+            if case .string(let insight) = payload["insight"] {
+                XCTAssertTrue(insight.contains("ritmo"))
+            } else {
+                XCTFail("insight ausente")
+            }
+        } else {
+            XCTFail("payload inválido")
+        }
+    }
+
+    func testGetDashboardInsightUsesContextMonthKey() throws {
+        cacheDashboardInsight("Resumo de teste.", monthKey: "2099-02")
+
+        var context = makeToolContext()
+        context.dashboardInsightMonthKey = "2099-02"
+        let result = try AIToolReaders.execute(name: "get_dashboard_insight", args: [:], context: context)
+        XCTAssertTrue(result.ok)
+        if case .object(let payload) = result.data {
+            if case .string(let key) = payload["month_key"] {
+                XCTAssertEqual(key, "2099-02")
+            } else {
+                XCTFail("month_key ausente")
+            }
+            if case .string(let insight) = payload["insight"] {
+                XCTAssertEqual(insight, "Resumo de teste.")
+            } else {
+                XCTFail("insight ausente")
+            }
+        } else {
+            XCTFail("payload inválido")
+        }
+    }
+
+    func testGetWishlistInsightReturnsCachedSuggestion() throws {
+        let monthKey = "2099-03"
+        cacheWishlistInsight("- Espere o fim do mês.\n- Item X cabe na folga.", monthKey: monthKey)
+
+        var toolContext = makeToolContext()
+        toolContext.wishlistInsightMonthKey = monthKey
+        let result = try AIToolReaders.execute(name: "get_wishlist_insight", args: [:], context: toolContext)
+        XCTAssertTrue(result.ok)
+        if case .object(let payload) = result.data {
+            if case .bool(let available) = payload["available"] {
+                XCTAssertTrue(available)
+            } else {
+                XCTFail("available ausente")
+            }
+            if case .string(let insight) = payload["insight"] {
+                XCTAssertTrue(insight.contains("folga"))
+            } else {
+                XCTFail("insight ausente")
+            }
+        } else {
+            XCTFail("payload inválido")
+        }
+    }
+
+    func testGetWishlistInsightUsesContextMonthKey() throws {
+        cacheWishlistInsight("Sugestão de teste.", monthKey: "2099-04")
+
+        var context = makeToolContext()
+        context.wishlistInsightMonthKey = "2099-04"
+        let result = try AIToolReaders.execute(name: "get_wishlist_insight", args: [:], context: context)
+        XCTAssertTrue(result.ok)
+        if case .object(let payload) = result.data {
+            if case .string(let key) = payload["month_key"] {
+                XCTAssertEqual(key, "2099-04")
+            } else {
+                XCTFail("month_key ausente")
+            }
+            if case .string(let insight) = payload["insight"] {
+                XCTAssertEqual(insight, "Sugestão de teste.")
+            } else {
+                XCTFail("insight ausente")
+            }
+        } else {
+            XCTFail("payload inválido")
+        }
+    }
+
     private func makeToolContext() -> AIToolContext {
         let transactions = (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
         let accounts = (try? context.fetch(FetchDescriptor<Account>())) ?? []
@@ -151,8 +271,7 @@ final class AIToolReadersTests: XCTestCase {
             recurringExpenses: [],
             recurringIncomes: [],
             categories: categories,
-            wishlistItems: wishlistItems,
-            monthlyIncomeCents: 500_000
+            wishlistItems: wishlistItems
         )
     }
 }

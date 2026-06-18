@@ -21,6 +21,14 @@ enum InsightsPrompts {
 }
 
 enum AIInsightsService {
+    static func monthKey(for date: Date, calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: date)
+    }
+
     static func cachedInsight(monthKey: String) -> String? {
         UserDefaults.standard.string(forKey: UserDefaultsKeys.aiInsightCacheKey(monthKey: monthKey))
     }
@@ -32,8 +40,15 @@ enum AIInsightsService {
     }
 
     static func cacheInsight(_ text: String, monthKey: String) {
-        UserDefaults.standard.set(text, forKey: UserDefaultsKeys.aiInsightCacheKey(monthKey: monthKey))
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        UserDefaults.standard.set(trimmed, forKey: UserDefaultsKeys.aiInsightCacheKey(monthKey: monthKey))
         UserDefaults.standard.set(Date.now.timeIntervalSince1970, forKey: UserDefaultsKeys.aiInsightCachedAtKey(monthKey: monthKey))
+    }
+
+    static func clearCachedInsight(monthKey: String) {
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.aiInsightCacheKey(monthKey: monthKey))
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.aiInsightCachedAtKey(monthKey: monthKey))
     }
 
     @MainActor
@@ -50,7 +65,6 @@ enum AIInsightsService {
         recurringIncomes: [RecurringIncome],
         categories: [Category],
         previousMonthExpense: Decimal,
-        monthlyIncomeCents: Int,
         modelContext: ModelContext,
         aiService: AIService
     ) async throws -> String {
@@ -67,7 +81,6 @@ enum AIInsightsService {
                 recurringIncomes: recurringIncomes,
                 categories: categories,
                 wishlistItems: wishlistItems,
-                monthlyIncomeCents: monthlyIncomeCents,
                 now: summary.referenceDate
             )
             context = AIToolInsightContext.compactSnapshot(context: toolContext)
@@ -82,8 +95,7 @@ enum AIInsightsService {
                 transactions: transactions,
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
-                previousMonthExpense: previousMonthExpense,
-                monthlyIncomeCents: monthlyIncomeCents
+                previousMonthExpense: previousMonthExpense
             )
         }
 

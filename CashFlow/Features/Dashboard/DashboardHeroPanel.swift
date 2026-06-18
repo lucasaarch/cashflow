@@ -26,7 +26,7 @@ struct DashboardHeroPanel: View {
         CFPanel(padding: 20) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Patrimônio líquido")
-                    .font(CFTheme.caption().weight(.medium))
+                    .font(CFTheme.dashboardLabel())
                     .foregroundStyle(CFTheme.textSecondary)
                     .textCase(.uppercase)
                 CFAnimatedAmount(
@@ -39,7 +39,13 @@ struct DashboardHeroPanel: View {
 
             if !statChips.isEmpty {
                 CFPanelDivider()
-                VStack(spacing: 8) {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 8),
+                        GridItem(.flexible(), spacing: 8)
+                    ],
+                    spacing: 8
+                ) {
                     ForEach(Array(statChips.enumerated()), id: \.offset) { _, chip in
                         CFStatChip(
                             label: chip.label,

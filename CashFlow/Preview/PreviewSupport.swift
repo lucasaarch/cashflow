@@ -138,7 +138,7 @@ enum PreviewData {
         ]
         transactions.forEach { context.insert($0) }
 
-        context.insert(AppSettings(monthlyIncomeCents: 500_000))
+        context.insert(AppSettings())
 
         try? context.save()
     }
@@ -151,7 +151,6 @@ enum PreviewData {
     static var monthSummary: MonthSummary {
         MonthSummary(
             referenceDate: .now,
-            monthlyIncomeFallback: 5000,
             transactions: sampleTransactions
         )
     }

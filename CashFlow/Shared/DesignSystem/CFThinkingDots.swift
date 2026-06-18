@@ -28,6 +28,7 @@ struct CFThinkingDots: View {
                     )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: dotSize + bounce)
         .accessibilityLabel("Pensando")
         .onAppear {

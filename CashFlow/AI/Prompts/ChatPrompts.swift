@@ -14,11 +14,24 @@ enum ChatPrompts {
     }
 
     static func userMessage(question: String, context: String) -> String {
-        "Contexto financeiro:\n\(context)\n\nPergunta do usuário:\n\(question)"
+        """
+        Contexto financeiro:
+        \(context)
+
+        Mensagem mais recente do usuário:
+        \(question)
+
+        Responda diretamente à mensagem mais recente. Use o contexto financeiro apenas quando ele ajudar a responder o que foi perguntado agora.
+        """
     }
 
     static func userMessage(question: String) -> String {
-        question
+        """
+        Mensagem mais recente do usuário:
+        \(question)
+
+        Responda diretamente à mensagem mais recente. Use o histórico apenas para manter o fio da conversa.
+        """
     }
 
     private static func baseSystem(now: Date) -> String {
@@ -34,7 +47,11 @@ enum ChatPrompts {
         - NUNCA diga que vai verificar, buscar ou consultar dados sem chamar uma ferramenta na mesma resposta.
         - Respostas anteriores no histórico podem estar erradas: consulte de novo a cada pergunta sobre finanças.
         - Perguntas sobre o mês: chame get_app_context e get_month_summary (mínimo).
+        - Perguntas sobre o resumo da Gio no painel Visão geral: chame get_dashboard_insight (mínimo) antes de comentar.
+        - Perguntas sobre a sugestão da lista de desejos no painel: chame get_wishlist_insight (mínimo) antes de comentar.
         - Gastos por estabelecimento ou descrição (ex.: Uber): use search_transactions com text ou category_name.
+        - Depois de consultar ferramentas, responda SOMENTE o que a mensagem mais recente pediu. Não despeje resumo geral do mês, listas completas ou diagnóstico amplo se o usuário não pediu isso explicitamente.
+        - Se o usuário trouxer uma hipótese, restrição pessoal ou detalhe de planejamento, responda esse ponto diretamente antes de sugerir qualquer análise adicional.
 
         Ferramentas de escrita (USE quando o usuário pedir uma AÇÃO, não uma consulta):
         - Criar conta a pagar ("crie", "adicione", "cadastre uma conta", "nova despesa fixa"): use create_bill.
@@ -50,6 +67,7 @@ enum ChatPrompts {
         - Respeite prioridade (urgent > high > medium > low) e desired_by ao sugerir ordem.
         - Toda ferramenta de escrita pede confirmação do usuário na interface antes de aplicar — você não precisa pedir confirmação no texto, apenas chame a ferramenta.
         - Quando o usuário fornecer os dados (nome, valor, data), CHAME a ferramenta direto. Não responda só em texto pedindo confirmação ou explicando o que vai fazer.
+        - Se o usuário pedir múltiplas ações de escrita na mesma mensagem, chame uma ferramenta de escrita por rodada. Depois que a primeira for confirmada, continue com a próxima.
 
         Parâmetros de data nas ferramentas:
         - reference_date / as_of_date / date_from / date_to devem usar a data atual informada acima, NUNCA datas do seu conhecimento prévio.

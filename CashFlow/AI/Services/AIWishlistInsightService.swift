@@ -27,8 +27,15 @@ enum AIWishlistInsightService {
     }
 
     static func cacheInsight(_ text: String, monthKey: String) {
-        UserDefaults.standard.set(text, forKey: UserDefaultsKeys.aiWishlistInsightCacheKey(monthKey: monthKey))
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        UserDefaults.standard.set(trimmed, forKey: UserDefaultsKeys.aiWishlistInsightCacheKey(monthKey: monthKey))
         UserDefaults.standard.set(Date.now.timeIntervalSince1970, forKey: UserDefaultsKeys.aiWishlistInsightCachedAtKey(monthKey: monthKey))
+    }
+
+    static func clearCachedInsight(monthKey: String) {
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.aiWishlistInsightCacheKey(monthKey: monthKey))
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.aiWishlistInsightCachedAtKey(monthKey: monthKey))
     }
 
     @MainActor
@@ -44,7 +51,6 @@ enum AIWishlistInsightService {
         recurringExpenses: [RecurringExpense],
         recurringIncomes: [RecurringIncome],
         categories: [Category],
-        monthlyIncomeCents: Int,
         modelContext: ModelContext,
         aiService: AIService
     ) async throws -> String {
@@ -61,7 +67,6 @@ enum AIWishlistInsightService {
             recurringIncomes: recurringIncomes,
             categories: categories,
             wishlistItems: wishlistItems,
-            monthlyIncomeCents: monthlyIncomeCents,
             now: summary.referenceDate
         )
 

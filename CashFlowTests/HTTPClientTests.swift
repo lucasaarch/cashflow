@@ -1,6 +1,7 @@
 import XCTest
 @testable import CashFlow
 
+@MainActor
 final class HTTPClientTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.handler = nil

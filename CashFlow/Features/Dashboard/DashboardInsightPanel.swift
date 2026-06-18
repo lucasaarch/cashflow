@@ -3,8 +3,10 @@ import SwiftData
 
 struct DashboardInsightPanel: View {
     @EnvironmentObject private var aiService: AIService
+    @EnvironmentObject private var chatPanelState: AIChatPanelState
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     let referenceDate: Date
     let summary: MonthSummary
@@ -18,7 +20,6 @@ struct DashboardInsightPanel: View {
     let recurringExpenses: [RecurringExpense]
     let recurringIncomes: [RecurringIncome]
     let categories: [Category]
-    let monthlyIncomeCents: Int
 
     @State private var insightText: String?
     @State private var insightLoading = false
@@ -27,17 +28,23 @@ struct DashboardInsightPanel: View {
     @State private var insightIsFresh = false
 
     private var monthKey: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        return formatter.string(from: referenceDate)
+        AIInsightsService.monthKey(for: referenceDate)
+    }
+
+    private var hasCachedInsight: Bool {
+        AIInsightsService.cachedInsight(monthKey: monthKey) != nil
+    }
+
+    private var displayInsight: String? {
+        if let insightText { return insightText }
+        return AIInsightsService.cachedInsight(monthKey: monthKey)
     }
 
     var body: some View {
-        if aiService.configuration.isReady {
+        if aiService.configuration.isReady || hasCachedInsight {
             CFPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    header
-                    bodyContent
+                    insightColumn
                     if let insightError {
                         Text(insightError)
                             .font(CFTheme.caption())
@@ -46,50 +53,53 @@ struct DashboardInsightPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .overlay {
-                if insightIsFresh && !reduceMotion {
-                    RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                        .stroke(CFTheme.accent.opacity(0.45), lineWidth: 1.2)
-                        .blur(radius: 4)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-            }
+            .cfAIGlow(active: insightLoading || insightIsFresh)
             .animation(reduceMotion ? nil : CFMotion.gentle, value: insightIsFresh)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onAppear(perform: loadCachedInsight)
             .onChange(of: referenceDate) { _, _ in loadCachedInsight() }
+            .onChange(of: aiService.configuration.isReady) { _, _ in loadCachedInsight() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { loadCachedInsight() }
+            }
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(CFTheme.accent)
-                Text("Resumo da \(AIAssistantIdentity.name)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CFTheme.textPrimary)
-                Spacer(minLength: 0)
-                if insightText != nil && !insightLoading {
-                    Button {
-                        Task { await generateInsight(force: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(CFTheme.textSecondary)
-                            .frame(width: 24, height: 24)
-                            .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+    private var insightColumn: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(CFTheme.accent)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("Resumo da \(AIAssistantIdentity.name)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CFTheme.textPrimary)
+                    Spacer(minLength: 0)
+                    if displayInsight != nil, !insightLoading, aiService.configuration.isReady {
+                        Button {
+                            Task { await generateInsight(force: true) }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(CFTheme.textSecondary)
+                                .frame(width: 24, height: 24)
+                                .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Atualizar resumo")
                     }
-                    .buttonStyle(.plain)
-                    .help("Atualizar resumo")
                 }
-            }
-            if let chip = freshnessChip {
-                Text(chip)
-                    .font(.caption2)
-                    .foregroundStyle(CFTheme.textSecondary)
+
+                if let chip = freshnessChip {
+                    Text(chip)
+                        .font(CFTheme.dashboardMeta())
+                        .foregroundStyle(CFTheme.textSecondary)
+                }
+
+                bodyContent
             }
         }
     }
@@ -97,19 +107,27 @@ struct DashboardInsightPanel: View {
     @ViewBuilder
     private var bodyContent: some View {
         if insightLoading {
-            VStack(alignment: .leading, spacing: 10) {
-                CFSkeletonLine(height: 11, widthFraction: 0.95)
-                CFSkeletonLine(height: 11, widthFraction: 0.85)
-                CFSkeletonLine(height: 11, widthFraction: 0.7)
+            CFThinkingDots()
+                .padding(.vertical, 4)
+        } else if let displayInsight {
+            VStack(alignment: .leading, spacing: 12) {
+                if insightIsFresh {
+                    CFTypewriter(text: displayInsight, markdown: true, animated: true)
+                        .font(.callout)
+                        .foregroundStyle(CFTheme.textPrimary)
+                        .lineSpacing(3)
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                } else {
+                    CFMarkdownText(text: displayInsight, lineSpacing: 3)
+                }
+
+                if aiService.configuration.isReady {
+                    CFPillButton(title: "Conversar sobre isso", icon: "bubble.left.and.text.bubble.right", style: .ghost) {
+                        chatPanelState.openToDiscussDashboardInsight(referenceDate: referenceDate)
+                    }
+                }
             }
-            .padding(.vertical, 4)
-        } else if let insightText {
-            CFTypewriter(text: insightText, markdown: true, animated: insightIsFresh)
-                .font(.callout)
-                .foregroundStyle(CFTheme.textPrimary)
-                .lineSpacing(3)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        } else {
+        } else if aiService.configuration.isReady {
             CFPillButton(title: "Gerar resumo", icon: "sparkles", style: .primary) {
                 Task { await generateInsight(force: false) }
             }
@@ -117,7 +135,7 @@ struct DashboardInsightPanel: View {
     }
 
     private var freshnessChip: String? {
-        guard insightText != nil, let cachedAt = insightCachedAt else { return nil }
+        guard displayInsight != nil, let cachedAt = insightCachedAt else { return nil }
         let seconds = Int(Date.now.timeIntervalSince(cachedAt))
         switch seconds {
         case ..<60: return "agora mesmo"
@@ -141,6 +159,7 @@ struct DashboardInsightPanel: View {
     }
 
     private func generateInsight(force: Bool) async {
+        guard aiService.configuration.isReady else { return }
         if !force, insightText != nil { return }
         insightLoading = true
         insightError = nil
@@ -151,7 +170,6 @@ struct DashboardInsightPanel: View {
         let previousMonth = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
         let previousSummary = MonthSummary(
             referenceDate: previousMonth,
-            monthlyIncomeFallback: Decimal(monthlyIncomeCents) / 100,
             transactions: transactions
         )
 
@@ -169,12 +187,11 @@ struct DashboardInsightPanel: View {
                 recurringIncomes: recurringIncomes,
                 categories: categories,
                 previousMonthExpense: previousSummary.totalExpense,
-                monthlyIncomeCents: monthlyIncomeCents,
                 modelContext: modelContext,
                 aiService: aiService
             )
             AIInsightsService.cacheInsight(text, monthKey: monthKey)
-            insightText = text
+            insightText = AIInsightsService.cachedInsight(monthKey: monthKey)
             insightCachedAt = AIInsightsService.cachedInsightDate(monthKey: monthKey)
             insightIsFresh = true
             Task {

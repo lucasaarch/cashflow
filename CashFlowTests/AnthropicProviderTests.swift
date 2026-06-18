@@ -2,31 +2,17 @@ import XCTest
 @testable import CashFlow
 
 final class AnthropicProviderTests: XCTestCase {
-    private var savedAnthropicKey: String?
+    override class func setUp() {
+        SecureStoreTestIsolation.activate()
+    }
 
-    override func setUp() {
-        savedAnthropicKey = SecureStore.read(.anthropicAPIKey)
+    override class func tearDown() {
+        SecureStoreTestIsolation.deactivate()
     }
 
     override func tearDown() {
         MockURLProtocol.handler = nil
-        restoreAnthropicKeyIfSaved()
         super.tearDown()
-    }
-
-    /// Restores a key the user had before the test. Never deletes — that would wipe real credentials.
-    private func restoreAnthropicKeyIfSaved() {
-        guard let savedAnthropicKey else { return }
-        try? SecureStore.save(savedAnthropicKey, for: .anthropicAPIKey)
-    }
-
-    /// Cleans up after a test that wrote a temporary key.
-    private func cleanupAnthropicKeyAfterTest() {
-        if let savedAnthropicKey {
-            try? SecureStore.save(savedAnthropicKey, for: .anthropicAPIKey)
-        } else {
-            SecureStore.delete(.anthropicAPIKey)
-        }
     }
 
     func testListModelsFetchesFromAPI() async throws {
@@ -62,19 +48,32 @@ final class AnthropicProviderTests: XCTestCase {
         }
 
         let defaults = UserDefaults(suiteName: "AnthropicProviderTests")!
-        defaults.set("127.0.0.1", forKey: UserDefaultsKeys.aiOllamaHost)
-        try SecureStore.save("sk-ant-test", for: .anthropicAPIKey)
-        defer { cleanupAnthropicKeyAfterTest() }
+        try await secureStoreSave("sk-ant-test", for: .anthropicAPIKey)
 
-        let provider = AnthropicProvider(
+        let provider = await AnthropicProvider(
             configuration: AIConfiguration(defaults: defaults),
             client: HTTPClient(session: URLSession(configuration: config))
         )
 
         let models = try await provider.listModels()
-        XCTAssertEqual(models.count, 1)
-        XCTAssertEqual(models.first?.id, "claude-sonnet-4-6")
-        XCTAssertEqual(models.first?.displayName, "Claude Sonnet 4.6")
-        XCTAssertEqual(models.first?.contextWindow, 1_000_000)
+        let values = await MainActor.run {
+            (
+                count: models.count,
+                id: models.first?.id,
+                displayName: models.first?.displayName,
+                contextWindow: models.first?.contextWindow
+            )
+        }
+
+        XCTAssertEqual(values.count, 1)
+        XCTAssertEqual(values.id, "claude-sonnet-4-6")
+        XCTAssertEqual(values.displayName, "Claude Sonnet 4.6")
+        XCTAssertEqual(values.contextWindow, 1_000_000)
+    }
+
+    private func secureStoreSave(_ value: String, for key: SecureStore.Key) async throws {
+        try await Task.detached {
+            try SecureStore.save(value, for: key)
+        }.value
     }
 }

@@ -6,10 +6,8 @@ import SwiftData
 @Model
 final class AppSettings {
     @Attribute(.unique) var id: String
-    var monthlyIncomeCents: Int
 
-    init(id: String = AppSettingsBootstrap.defaultID, monthlyIncomeCents: Int = 0) {
+    init(id: String = AppSettingsBootstrap.defaultID) {
         self.id = id
-        self.monthlyIncomeCents = monthlyIncomeCents
     }
 }

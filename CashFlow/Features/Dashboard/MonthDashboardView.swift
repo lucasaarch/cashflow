@@ -30,43 +30,34 @@ struct MonthDashboardView: View {
     @Query(sort: [SortDescriptor(\Category.sortOrder)])
     private var categories: [Category]
 
-    @Query(filter: #Predicate<AppSettings> { $0.id == "default" })
-    private var appSettings: [AppSettings]
-
     @State private var referenceDate: Date = .now
-    @State private var editingIncome = false
-    @State private var contentWidth: CGFloat = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.cfLayoutMode) private var layoutMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var usesSingleColumn: Bool {
+    private func usesSingleColumn(availableWidth: CGFloat) -> Bool {
         if layoutMode == .compact || horizontalSizeClass == .compact {
             return true
         }
-        // Unknown width: prefer two columns on regular layouts until measured.
-        guard contentWidth > 0 else { return false }
-        return contentWidth < Self.twoColumnMinWidth
+        guard availableWidth > 0 else { return true }
+        return availableWidth < Self.twoColumnMinWidth
     }
 
-    /// Minimum content width before the dashboard splits into two columns.
-    private static let twoColumnMinWidth: CGFloat = 720
-
-    private var monthlyIncomeCents: Int {
-        appSettings.first?.monthlyIncomeCents ?? 0
-    }
-
-    private var monthlyIncomeBinding: Binding<Int> {
-        Binding(
-            get: { appSettings.first?.monthlyIncomeCents ?? 0 },
-            set: { appSettings.first?.monthlyIncomeCents = $0 }
-        )
-    }
+    /// Minimum dashboard width that keeps each column readable after padding and spacing.
+    private static let twoColumnMinWidth: CGFloat = (500 * 2) + 12 + (16 * 2)
 
     private var summary: MonthSummary {
         MonthSummary(
             referenceDate: referenceDate,
-            monthlyIncomeFallback: Decimal(monthlyIncomeCents) / 100,
+            transactions: transactions,
+            pendingReceivables: receivables
+        )
+    }
+
+    private var previousSummary: MonthSummary {
+        let previousMonth = Calendar.current.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
+        return MonthSummary(
+            referenceDate: previousMonth,
             transactions: transactions,
             pendingReceivables: receivables
         )
@@ -89,10 +80,10 @@ struct MonthDashboardView: View {
     }
 
     private var hasCategoryBreakdown: Bool { !summary.expensesByCategory.isEmpty }
-    private var showsPace: Bool { monthlyIncomeCents > 0 }
+    private var showsPace: Bool { summary.expectedIncome > 0 }
 
-    private var chartHeight: CGFloat {
-        usesSingleColumn ? 200 : 220
+    private func chartHeight(isSingleColumn: Bool) -> CGFloat {
+        isSingleColumn ? 200 : 220
     }
 
     var body: some View {
@@ -123,50 +114,47 @@ struct MonthDashboardView: View {
     }
 
     private var dashboardScroll: some View {
-        CFScrollView {
-            dashboardGrid
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .cfStaggerAppear(index: 0)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .offset(y: 8)),
-                    removal: .opacity
-                ))
-                .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
-        }
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: DashboardContentWidthKey.self, value: proxy.size.width)
+        GeometryReader { proxy in
+            let isSingleColumn = usesSingleColumn(availableWidth: proxy.size.width)
+
+            CFScrollView {
+                dashboardGrid(isSingleColumn: isSingleColumn)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .cfStaggerAppear(index: 0)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: 8)),
+                        removal: .opacity
+                    ))
+                    .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
             }
+            .cfPageBackground()
         }
-        .onPreferenceChange(DashboardContentWidthKey.self) { contentWidth = $0 }
-        .cfPageBackground()
     }
 
-    private var dashboardGrid: some View {
+    private func dashboardGrid(isSingleColumn: Bool) -> some View {
         Group {
-            if usesSingleColumn {
-                singleColumnLayout
+            if isSingleColumn {
+                singleColumnLayout(isSingleColumn: isSingleColumn)
             } else {
-                twoColumnLayout
+                twoColumnLayout(isSingleColumn: isSingleColumn)
             }
         }
-        .animation(reduceMotion ? nil : CFMotion.gentle, value: usesSingleColumn)
+        .animation(reduceMotion ? nil : CFMotion.gentle, value: isSingleColumn)
     }
 
-    private var twoColumnLayout: some View {
+    private func twoColumnLayout(isSingleColumn: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            dashboardColumn { leftColumn }
-            dashboardColumn { rightColumn }
+            dashboardColumn { leftColumn(isSingleColumn: isSingleColumn) }
+            dashboardColumn { rightColumn(isSingleColumn: isSingleColumn) }
         }
     }
 
-    private var singleColumnLayout: some View {
+    private func singleColumnLayout(isSingleColumn: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            leftColumn
-            rightColumn
+            leftColumn(isSingleColumn: isSingleColumn)
+            rightColumn(isSingleColumn: isSingleColumn)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -180,15 +168,13 @@ struct MonthDashboardView: View {
     }
 
     @ViewBuilder
-    private var leftColumn: some View {
+    private func leftColumn(isSingleColumn: Bool) -> some View {
         DashboardHeroPanel(overview: overview)
             .frame(maxWidth: .infinity, alignment: .leading)
 
         DashboardMonthPanel(
             summary: summary,
-            showsPace: showsPace,
-            editingIncome: $editingIncome,
-            monthlyIncomeCents: monthlyIncomeBinding
+            showsPace: showsPace
         )
         .id(referenceDate)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -206,11 +192,16 @@ struct MonthDashboardView: View {
                 receivables: receivables,
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
-                categories: categories,
-                monthlyIncomeCents: monthlyIncomeCents
+                categories: categories
             )
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+
+        DashboardCategoryTrendsPanel(
+            currentSummary: summary,
+            previousSummary: previousSummary
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
 
         if hasCategoryBreakdown {
             CategoryBreakdownCard(
@@ -224,13 +215,21 @@ struct MonthDashboardView: View {
             transactions: transactions,
             accounts: accounts,
             bills: bills,
-            chartHeight: usesSingleColumn ? 140 : 180
+            chartHeight: isSingleColumn ? 140 : 180
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardCashFlowChartCard(
+            transactions: transactions,
+            accounts: accounts,
+            bills: bills,
+            chartHeight: chartHeight(isSingleColumn: isSingleColumn)
         )
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
-    private var rightColumn: some View {
+    private func rightColumn(isSingleColumn: Bool) -> some View {
         DashboardInsightPanel(
             referenceDate: referenceDate,
             summary: summary,
@@ -243,28 +242,47 @@ struct MonthDashboardView: View {
             transactions: transactions,
             recurringExpenses: recurringExpenses,
             recurringIncomes: recurringIncomes,
-            categories: categories,
-            monthlyIncomeCents: monthlyIncomeCents
+            categories: categories
         )
+
+        DashboardInboxPanel(
+            summary: summary,
+            overview: overview,
+            bills: bills,
+            receivables: receivables,
+            wishlistItems: wishlistItems,
+            referenceDate: referenceDate
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardProjectionPanel(
+            summary: summary,
+            overview: overview,
+            bills: bills,
+            receivables: receivables,
+            referenceDate: referenceDate
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardRecoveryPlanPanel(
+            summary: summary,
+            overview: overview,
+            bills: bills,
+            receivables: receivables,
+            wishlistItems: wishlistItems
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
 
         if highlightsPanel.shouldShow {
             highlightsPanel
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
 
-        DashboardCashFlowChartCard(
-            transactions: transactions,
-            accounts: accounts,
-            bills: bills,
-            chartHeight: chartHeight
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-
         DashboardNetWorthChartCard(
             transactions: transactions,
             accounts: accounts,
             bills: bills,
-            chartHeight: chartHeight
+            chartHeight: chartHeight(isSingleColumn: isSingleColumn)
         )
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -320,10 +338,3 @@ struct MonthDashboardView: View {
     }
 }
 
-private struct DashboardContentWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}

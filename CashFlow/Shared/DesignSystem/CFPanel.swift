@@ -60,7 +60,7 @@ struct CFPanelSection<Content: View, Trailing: View>: View {
                         .foregroundStyle(CFTheme.textPrimary)
                     if let subtitle {
                         Text(subtitle)
-                            .font(CFTheme.caption())
+                            .font(.callout)
                             .foregroundStyle(CFTheme.textSecondary)
                     }
                 }
@@ -86,19 +86,19 @@ struct CFStatChip: View {
             HStack(spacing: 4) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(tint.opacity(0.85))
                 }
                 Text(label)
-                    .font(.caption2.weight(.medium))
+                    .font(CFTheme.dashboardLabel())
                     .foregroundStyle(CFTheme.textSecondary)
                     .lineLimit(1)
             }
             Text(amount.brl(masked: privacy.valuesHidden))
-                .font(.callout.weight(.semibold).monospacedDigit())
+                .font(CFTheme.dashboardAmount())
                 .foregroundStyle(tint)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)

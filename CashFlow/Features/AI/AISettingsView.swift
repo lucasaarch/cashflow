@@ -273,8 +273,6 @@ private struct ProviderConfigSheet: View {
 
     @State private var openAIKey = ""
     @State private var anthropicKey = ""
-    @State private var ollamaHost = ""
-    @State private var ollamaPort = ""
     @State private var editingOpenAI = false
     @State private var editingAnthropic = false
     @State private var statusMessage: String?
@@ -305,12 +303,7 @@ private struct ProviderConfigSheet: View {
         .onAppear(perform: loadFields)
     }
 
-    private var sheetHeight: CGFloat {
-        switch provider {
-        case .openai, .anthropic: return 320
-        case .ollama: return 360
-        }
-    }
+    private var sheetHeight: CGFloat { 320 }
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -334,7 +327,6 @@ private struct ProviderConfigSheet: View {
         switch provider {
         case .openai: return "GPT e modelos da OpenAI"
         case .anthropic: return "Claude e modelos da Anthropic"
-        case .ollama: return "Modelos rodando localmente"
         }
     }
 
@@ -346,8 +338,6 @@ private struct ProviderConfigSheet: View {
                     credentialsSection { openAIFields }
                 case .anthropic:
                     credentialsSection { anthropicFields }
-                case .ollama:
-                    connectionSection
                 }
 
                 if let statusMessage {
@@ -429,28 +419,6 @@ private struct ProviderConfigSheet: View {
         }
     }
 
-    private var connectionSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Conexão")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-
-            labeledRow("Host") {
-                TextField("127.0.0.1", text: $ollamaHost)
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.trailing)
-            }
-
-            labeledRow("Porta") {
-                TextField("11434", text: $ollamaPort)
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 80)
-            }
-        }
-    }
-
     private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 12) {
             Text(label)
@@ -498,14 +466,10 @@ private struct ProviderConfigSheet: View {
         switch provider {
         case .openai: return editingOpenAI && !openAIKey.isEmpty
         case .anthropic: return editingAnthropic && !anthropicKey.isEmpty
-        case .ollama: return true
         }
     }
 
-    private func loadFields() {
-        ollamaHost = configuration.ollamaHost
-        ollamaPort = String(configuration.ollamaPort)
-    }
+    private func loadFields() {}
 
     private func save() {
         switch provider {
@@ -519,9 +483,6 @@ private struct ProviderConfigSheet: View {
             try? SecureStore.save(anthropicKey, for: .anthropicAPIKey)
             anthropicKey = ""
             editingAnthropic = false
-        case .ollama:
-            configuration.ollamaHost = ollamaHost
-            configuration.ollamaPort = Int(ollamaPort) ?? 11434
         }
     }
 
@@ -530,7 +491,6 @@ private struct ProviderConfigSheet: View {
         defer { isTesting = false }
         do {
             try persistCredentialsForTest()
-            saveOllamaIfNeeded()
             let models = try await aiService.listModels(for: provider)
             cachedModels[provider] = models
             statusMessage = "Conexão com sucesso — \(models.count) modelos encontrados."
@@ -572,15 +532,7 @@ private struct ProviderConfigSheet: View {
             } else if !configuration.isConfigured(.anthropic) {
                 throw AIError.notConfigured(.anthropic)
             }
-        case .ollama:
-            break
         }
-    }
-
-    private func saveOllamaIfNeeded() {
-        guard provider == .ollama else { return }
-        configuration.ollamaHost = ollamaHost
-        configuration.ollamaPort = Int(ollamaPort) ?? 11434
     }
 }
 

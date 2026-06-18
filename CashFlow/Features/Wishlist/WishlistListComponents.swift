@@ -10,7 +10,7 @@ struct WishlistSummaryHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Total estimado")
-                .font(CFTheme.caption().weight(.medium))
+                .font(CFTheme.dashboardLabel())
                 .foregroundStyle(CFTheme.textSecondary)
                 .textCase(.uppercase)
 
@@ -22,7 +22,7 @@ struct WishlistSummaryHeader: View {
 
             if let breakdown = breakdownText {
                 Text(breakdown)
-                    .font(CFTheme.caption())
+                    .font(CFTheme.dashboardMeta())
                     .foregroundStyle(CFTheme.textTertiary)
             }
         }

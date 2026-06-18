@@ -28,6 +28,14 @@ enum CFTheme {
     static func kpiValue() -> Font {
         .system(size: 15, weight: .medium, design: .rounded).monospacedDigit()
     }
+    /// Secondary labels on dashboard stat chips and KPI rows.
+    static func dashboardLabel() -> Font { .system(size: 13, weight: .medium) }
+    /// Supporting dashboard copy — previsto, datas, detalhes de alerta.
+    static func dashboardMeta() -> Font { .system(size: 13) }
+    /// Emphasized amounts inside dashboard chips and compact rows.
+    static func dashboardAmount() -> Font {
+        .system(size: 15, weight: .semibold, design: .rounded).monospacedDigit()
+    }
 
     static let cardRadius: CGFloat = 16
     static let cardPadding: CGFloat = 20

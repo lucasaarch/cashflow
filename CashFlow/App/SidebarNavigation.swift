@@ -142,7 +142,13 @@ struct AIChatPresentationModifier: ViewModifier {
     private var chatOpenBinding: Binding<Bool> {
         Binding(
             get: { chatPanelState.isOpen },
-            set: { chatPanelState.isOpen = $0 }
+            set: { newValue in
+                if newValue {
+                    chatPanelState.openFresh()
+                } else {
+                    chatPanelState.close()
+                }
+            }
         )
     }
 }

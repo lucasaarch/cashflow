@@ -41,7 +41,8 @@ final class AIChatService {
         recurringExpenses: [RecurringExpense],
         recurringIncomes: [RecurringIncome],
         categories: [Category],
-        monthlyIncomeCents: Int,
+        dashboardInsightMonthKey: String? = nil,
+        wishlistInsightMonthKey: String? = nil,
         context modelContext: ModelContext,
         onStatus: ((AIAgentStatusUpdate) -> Void)? = nil,
         onPartialContent: ((String) -> Void)? = nil
@@ -71,7 +72,8 @@ final class AIChatService {
             recurringIncomes: recurringIncomes,
             categories: categories,
             wishlistItems: wishlistItems,
-            monthlyIncomeCents: monthlyIncomeCents
+            dashboardInsightMonthKey: dashboardInsightMonthKey,
+            wishlistInsightMonthKey: wishlistInsightMonthKey
         )
 
         var messages = buildConversationMessages(conversation: conversation, userText: trimmed, toolContext: toolContext)
@@ -137,7 +139,8 @@ final class AIChatService {
         recurringExpenses: [RecurringExpense],
         recurringIncomes: [RecurringIncome],
         categories: [Category],
-        monthlyIncomeCents: Int,
+        dashboardInsightMonthKey: String? = nil,
+        wishlistInsightMonthKey: String? = nil,
         context modelContext: ModelContext,
         onStatus: ((AIAgentStatusUpdate) -> Void)? = nil,
         onPartialContent: ((String) -> Void)? = nil
@@ -153,7 +156,8 @@ final class AIChatService {
             recurringIncomes: recurringIncomes,
             categories: categories,
             wishlistItems: wishlistItems,
-            monthlyIncomeCents: monthlyIncomeCents
+            dashboardInsightMonthKey: dashboardInsightMonthKey,
+            wishlistInsightMonthKey: wishlistInsightMonthKey
         )
 
         let assistantMessage = ChatMessage(role: .assistant, content: "", conversation: conversation)
@@ -252,8 +256,7 @@ final class AIChatService {
                 receivables: toolContext.receivables,
                 goals: toolContext.goals,
                 recurringExpenses: toolContext.recurringExpenses,
-                recurringIncomes: toolContext.recurringIncomes,
-                monthlyIncomeCents: toolContext.monthlyIncomeCents
+                recurringIncomes: toolContext.recurringIncomes
             )
             messages.append(AIMessage(role: .user, content: ChatPrompts.userMessage(question: userText, context: snapshot)))
         }

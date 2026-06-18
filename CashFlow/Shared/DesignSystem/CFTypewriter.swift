@@ -8,6 +8,7 @@ struct CFTypewriter: View {
     var markdown: Bool = false
     var animated: Bool = true
     var charactersPerSecond: Double = 110
+    var onProgress: ((Int) -> Void)? = nil
     var onComplete: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -51,6 +52,7 @@ struct CFTypewriter: View {
         guard shouldAnimate else {
             revealedCount = plainText.count
             isComplete = true
+            onProgress?(revealedCount)
             onComplete?()
             return
         }
@@ -62,6 +64,9 @@ struct CFTypewriter: View {
             try? await Task.sleep(nanoseconds: tick)
             if Task.isCancelled { return }
             revealedCount = min(revealedCount + 1, total)
+            if revealedCount == total || revealedCount.isMultiple(of: 8) {
+                onProgress?(revealedCount)
+            }
         }
         isComplete = true
         onComplete?()

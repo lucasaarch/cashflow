@@ -7,6 +7,8 @@ enum AIChatPanelPresentation {
 }
 
 struct AIChatSidePanel: View {
+    private static let bottomAnchorID = "ai-chat-bottom-anchor"
+
     @EnvironmentObject private var aiService: AIService
     @EnvironmentObject private var chatPanelState: AIChatPanelState
     @Environment(\.modelContext) private var modelContext
@@ -25,11 +27,9 @@ struct AIChatSidePanel: View {
     @Query(sort: [SortDescriptor(\RecurringIncome.createdAt)]) private var recurringIncomes: [RecurringIncome]
     @Query(sort: [SortDescriptor(\Category.sortOrder)]) private var categories: [Category]
 
-    @Query(filter: #Predicate<AppSettings> { $0.id == "default" })
-    private var appSettings: [AppSettings]
-
     @State private var isSending = false
     @State private var typewriterMessageID: UUID?
+    @State private var typewriterScrollTick = 0
     @State private var errorMessage: String?
     @State private var showingHistory = false
     @State private var showDeleteConversationAlert = false
@@ -101,6 +101,14 @@ struct AIChatSidePanel: View {
             Button("Cancelar", role: .cancel) {}
         } message: {
             Text("As mensagens desta conversa serão removidas permanentemente.")
+        }
+        .onChange(of: chatPanelState.insightLaunchToken) { _, token in
+            guard token != nil else { return }
+            Task { await handleInsightLaunchIfNeeded() }
+        }
+        .onChange(of: chatPanelState.isOpen) { _, isOpen in
+            guard isOpen, chatPanelState.insightLaunchToken != nil else { return }
+            Task { await handleInsightLaunchIfNeeded() }
         }
     }
 
@@ -238,7 +246,7 @@ struct AIChatSidePanel: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if sortedMessages.isEmpty {
                         emptyState
                     } else {
@@ -259,6 +267,10 @@ struct AIChatSidePanel: View {
                     if let status = chatPanelState.toolStatusMessage, isSending {
                         toolStatusBanner(status)
                     }
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.bottomAnchorID)
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
@@ -266,8 +278,19 @@ struct AIChatSidePanel: View {
                 .cfScrollContent()
             }
             .cfScrollChrome()
+            .onAppear {
+                Task { await scrollToBottomWhenReady(proxy) }
+            }
+            .task(id: chatPanelState.selectedConversationID) {
+                await scrollToBottomWhenReady(proxy)
+            }
+            .onChange(of: chatPanelState.isOpen) { _, isOpen in
+                guard isOpen else { return }
+                Task { await scrollToBottomWhenReady(proxy) }
+            }
             .onChange(of: sortedMessages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: sortedMessages.last?.content) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: typewriterScrollTick) { _, _ in scrollToBottom(proxy) }
         }
     }
 
@@ -336,32 +359,23 @@ struct AIChatSidePanel: View {
     }
 
     private func userBubble(_ message: ChatMessage) -> some View {
-        HStack(alignment: .top) {
-            Spacer(minLength: 48)
-            Text(message.content)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textPrimary)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [CFTheme.accent.opacity(0.22), CFTheme.accent.opacity(0.14)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(CFTheme.accent.opacity(0.2), lineWidth: 1)
-                )
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
+        Text(message.content)
+            .font(CFTheme.body())
+            .foregroundStyle(CFTheme.textPrimary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(CFTheme.surfaceElevated.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(CFTheme.textTertiary.opacity(0.16), lineWidth: 1)
+            )
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -370,53 +384,34 @@ struct AIChatSidePanel: View {
         let alreadyPlayed = chatPanelState.typedMessageIDs.contains(message.id)
         let useTypewriter = typewriterMessageID == message.id && !isStreaming && !alreadyPlayed
 
-        HStack(alignment: .top, spacing: 10) {
-            CFIconBadge(symbolName: "sparkles", tint: CFTheme.accent, size: 28)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(AIAssistantIdentity.name)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CFTheme.accent)
-
-                Group {
-                    if isStreaming, message.content.isEmpty {
-                        CFThinkingDots()
-                    } else if useTypewriter {
-                        CFTypewriter(
-                            text: message.content,
-                            markdown: true,
-                            animated: true,
-                            onComplete: {
-                                chatPanelState.typedMessageIDs.insert(message.id)
-                                if typewriterMessageID == message.id {
-                                    typewriterMessageID = nil
-                                }
-                            }
-                        )
-                            .font(CFTheme.body())
-                            .foregroundStyle(CFTheme.textPrimary)
-                            .lineSpacing(4)
-                    } else {
-                        CFMarkdownText(text: message.content)
+        Group {
+            if isStreaming, message.content.isEmpty {
+                CFThinkingDots()
+            } else if useTypewriter {
+                CFTypewriter(
+                    text: message.content,
+                    markdown: true,
+                    animated: true,
+                    onProgress: { _ in
+                        typewriterScrollTick += 1
+                    },
+                    onComplete: {
+                        chatPanelState.typedMessageIDs.insert(message.id)
+                        if typewriterMessageID == message.id {
+                            typewriterMessageID = nil
+                        }
                     }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                )
+                .font(CFTheme.body())
+                .foregroundStyle(CFTheme.textPrimary)
+                .lineSpacing(4)
+            } else {
+                CFMarkdownText(text: message.content)
             }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(CFTheme.surfaceElevated.opacity(0.5))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(CFTheme.textTertiary.opacity(0.1), lineWidth: 1)
-            )
-
-            Spacer(minLength: 0)
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 4)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -499,7 +494,11 @@ struct AIChatSidePanel: View {
                     .font(CFTheme.body())
                     .lineLimit(1...5)
                     .focused($isInputFocused)
-                    .onSubmit { Task { await send() } }
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard !press.modifiers.contains(.shift) else { return .ignored }
+                        Task { await send() }
+                        return .handled
+                    }
                     .submitLabel(.send)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
@@ -507,13 +506,7 @@ struct AIChatSidePanel: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(CFTheme.surfaceElevated.opacity(0.45))
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(
-                                isInputFocused ? CFTheme.accent.opacity(0.35) : CFTheme.textTertiary.opacity(0.12),
-                                lineWidth: isInputFocused ? 1.5 : 1
-                            )
-                    )
+                    .cfAIGlow(active: isInputFocused || isSending, cornerRadius: 14, lineWidth: isInputFocused || isSending ? 1.4 : 0.8)
                     .animation(reduceMotion ? nil : CFMotion.snappy, value: isInputFocused)
 
                 sendButton
@@ -607,7 +600,8 @@ struct AIChatSidePanel: View {
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
                 categories: categories,
-                monthlyIncomeCents: appSettings.first?.monthlyIncomeCents ?? 0,
+                dashboardInsightMonthKey: chatPanelState.dashboardInsightMonthKey,
+                wishlistInsightMonthKey: chatPanelState.wishlistInsightMonthKey,
                 context: modelContext,
                 onStatus: { update in
                     if update.isExecutingTools, let toolName = update.toolName {
@@ -651,7 +645,8 @@ struct AIChatSidePanel: View {
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
                 categories: categories,
-                monthlyIncomeCents: appSettings.first?.monthlyIncomeCents ?? 0,
+                dashboardInsightMonthKey: chatPanelState.dashboardInsightMonthKey,
+                wishlistInsightMonthKey: chatPanelState.wishlistInsightMonthKey,
                 context: modelContext,
                 onStatus: { update in
                     if update.isExecutingTools, let toolName = update.toolName {
@@ -678,6 +673,8 @@ struct AIChatSidePanel: View {
         switch toolName {
         case let name where name.hasPrefix("get_goal") || name == "list_goals":
             return "Consultando suas metas…"
+        case "get_wishlist_insight":
+            return "Consultando sugestão da lista de desejos…"
         case let name where name.contains("wishlist"):
             return "Consultando lista de desejos…"
         case let name where name.contains("bill"):
@@ -688,11 +685,26 @@ struct AIChatSidePanel: View {
             return "Consultando lançamentos…"
         case "get_patrimony", "list_accounts":
             return "Consultando patrimônio…"
+        case "get_dashboard_insight":
+            return "Consultando resumo da Gio…"
         case let name where name.contains("month"):
             return "Consultando o mês…"
         default:
             return "Consultando seus dados…"
         }
+    }
+
+    private func handleInsightLaunchIfNeeded() async {
+        guard chatPanelState.isOpen else { return }
+        guard chatPanelState.consumeInsightLaunchToken() != nil else { return }
+        guard aiService.configuration.isReady else { return }
+        guard !chatPanelState.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !isSending else { return }
+
+        try? await Task.sleep(for: .milliseconds(150))
+        isInputFocused = true
+        try? await Task.sleep(for: .milliseconds(80))
+        await send()
     }
 
     private func deleteSelectedConversation() {
@@ -702,10 +714,26 @@ struct AIChatSidePanel: View {
         chatPanelState.selectedConversationID = conversations.first(where: { $0.id != deletingID })?.id
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        guard let last = sortedMessages.last?.id else { return }
-        withAnimation(reduceMotion ? nil : CFMotion.snappy) {
-            proxy.scrollTo(last, anchor: .bottom)
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        let scroll = {
+            if let lastID = sortedMessages.last?.id {
+                proxy.scrollTo(lastID, anchor: .bottom)
+            }
+            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
         }
+        if animated && !reduceMotion {
+            withAnimation(CFMotion.snappy) { scroll() }
+        } else {
+            scroll()
+        }
+    }
+
+    private func scrollToBottomWhenReady(_ proxy: ScrollViewProxy) async {
+        guard !sortedMessages.isEmpty else { return }
+        scrollToBottom(proxy, animated: false)
+        try? await Task.sleep(for: .milliseconds(16))
+        scrollToBottom(proxy, animated: false)
+        try? await Task.sleep(for: .milliseconds(100))
+        scrollToBottom(proxy, animated: false)
     }
 }

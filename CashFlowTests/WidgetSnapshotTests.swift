@@ -1,6 +1,7 @@
 import XCTest
 @testable import CashFlow
 
+@MainActor
 final class WidgetSnapshotTests: XCTestCase {
     func testRoundTripEncoding() throws {
         let original = WidgetSnapshot.placeholder

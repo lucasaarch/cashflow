@@ -88,9 +88,8 @@ struct ReportBuilder {
 
     var cashFlowSeries: [MonthlyCashFlowPoint] {
         monthAnchors.map { month in
-            let summary = MonthSummary(
+            let summary =             MonthSummary(
                 referenceDate: month,
-                monthlyIncomeFallback: 0,
                 transactions: transactions,
                 calendar: calendar,
                 now: endOfMonth(for: month)
@@ -171,9 +170,8 @@ struct ReportBuilder {
 
     var investmentFlowSeries: [InvestmentFlowPoint] {
         monthAnchors.map { month in
-            let summary = MonthSummary(
+            let summary =             MonthSummary(
                 referenceDate: month,
-                monthlyIncomeFallback: 0,
                 transactions: transactions,
                 calendar: calendar,
                 now: endOfMonth(for: month)
@@ -203,7 +201,6 @@ struct ReportBuilder {
     var monthComparison: MonthComparison {
         let current = MonthSummary(
             referenceDate: referenceDate,
-            monthlyIncomeFallback: 0,
             transactions: transactions,
             calendar: calendar,
             now: now
@@ -211,7 +208,6 @@ struct ReportBuilder {
         let previousMonth = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
         let previous = MonthSummary(
             referenceDate: previousMonth,
-            monthlyIncomeFallback: 0,
             transactions: transactions,
             calendar: calendar,
             now: endOfMonth(for: previousMonth)

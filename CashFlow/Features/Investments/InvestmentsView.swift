@@ -46,7 +46,10 @@ struct InvestmentsView: View {
     }
 
     private var monthSummary: MonthSummary {
-        MonthSummary(referenceDate: .now, monthlyIncomeFallback: 0, transactions: transactions)
+            MonthSummary(
+            referenceDate: .now,
+            transactions: transactions
+        )
     }
 
     private var recentTransfers: [FundTransferRow] {

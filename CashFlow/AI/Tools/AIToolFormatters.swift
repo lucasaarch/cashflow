@@ -164,8 +164,7 @@ enum AIToolFormatters {
             "planned_expense": .from(summary.plannedExpense),
             "pending_receivable_income": .from(summary.pendingReceivableIncome),
             "expected_income": .from(summary.expectedIncome),
-            "projected_balance": .from(summary.projectedBalance),
-            "uses_fallback_income": .bool(summary.usesFallbackIncome)
+            "projected_balance": .from(summary.projectedBalance)
         ]
     }
 

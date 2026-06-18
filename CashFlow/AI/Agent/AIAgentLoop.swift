@@ -8,7 +8,6 @@ struct AIAgentLoop {
     /// Tools that don't fetch user financial records (date/context metadata only).
     private static let metaOnlyTools: Set<String> = [
         "get_app_context",
-        "get_app_settings",
         "list_categories"
     ]
 
@@ -44,27 +43,44 @@ struct AIAgentLoop {
             if response.hasToolCalls {
                 let assistant = AIMessage(role: .assistant, content: response.content, toolCalls: response.toolCalls)
                 conversation.append(assistant)
+                var pendingWrite: AIPendingWriteAction?
 
                 for call in response.toolCalls {
                     AILogger.tools.debug("Executing tool=\(call.name, privacy: .public) args=\(call.argumentsJSON, privacy: .public)")
                     onStatus?(AIAgentStatusUpdate(toolName: call.name, isExecutingTools: true))
-                    let outcome = executor.execute(call: call)
+
+                    let outcome: AIToolExecutionOutcome
+                    if pendingWrite != nil, AIToolCatalog.definition(named: call.name)?.isWrite == true {
+                        let message = "Outra ação já está aguardando confirmação. Chame esta ferramenta novamente depois que a confirmação pendente for resolvida."
+                        outcome = AIToolExecutionOutcome(
+                            resultJSON: AIToolJSON.encodeString(.failure(message)),
+                            pendingWrite: nil
+                        )
+                    } else {
+                        outcome = executor.execute(call: call)
+                    }
+
                     let preview = outcome.resultJSON.prefix(300)
                     AILogger.tools.debug("Tool=\(call.name, privacy: .public) result chars=\(outcome.resultJSON.count) pending=\(outcome.pendingWrite != nil) preview=\(preview, privacy: .public)")
                     conversation.append(AIMessage.toolResult(callID: call.id, toolName: call.name, content: outcome.resultJSON))
                     toolsExecuted += 1
                     executedToolNames.insert(call.name)
 
-                    if let pending = outcome.pendingWrite {
-                        AILogger.agent.debug("Pausing for write confirmation tool=\(call.name, privacy: .public)")
-                        return AIAgentRunResult(
-                            messages: conversation,
-                            finalContent: response.content,
-                            pendingWrite: pending,
-                            awaitingConfirmation: true
-                        )
+                    if pendingWrite == nil, let pending = outcome.pendingWrite {
+                        pendingWrite = pending
                     }
                 }
+
+                if let pendingWrite {
+                    AILogger.agent.debug("Pausing for write confirmation tool=\(pendingWrite.toolName, privacy: .public)")
+                    return AIAgentRunResult(
+                        messages: conversation,
+                        finalContent: response.content,
+                        pendingWrite: pendingWrite,
+                        awaitingConfirmation: true
+                    )
+                }
+
                 continue
             }
 

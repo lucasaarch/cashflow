@@ -4,12 +4,13 @@ enum AIToolReaders {
     static func execute(name: String, args: [String: Any], context: AIToolContext) throws -> AIToolResultPayload {
         switch name {
         case "get_app_context": return getAppContext(context)
-        case "get_app_settings": return getAppSettings(context)
         case "get_patrimony": return getPatrimony(args, context)
         case "list_accounts": return listAccounts(args, context)
         case "get_account": return try getAccount(args, context)
         case "get_month_summary": return getMonthSummary(args, context)
         case "get_month_pace": return getMonthPace(args, context)
+        case "get_dashboard_insight": return getDashboardInsight(args, context)
+        case "get_wishlist_insight": return getWishlistInsight(args, context)
         case "compare_months": return compareMonths(args, context)
         case "search_transactions": return try searchTransactions(args, context)
         case "list_month_transactions": return listMonthTransactions(args, context)
@@ -54,12 +55,6 @@ enum AIToolReaders {
             "reference_month": .string(month),
             "currency": .string("BRL"),
             "rules": .string("Realizado = data ≤ hoje. Previsto = lançamentos futuros no mês + contas a receber pendentes.")
-        ]))
-    }
-
-    private static func getAppSettings(_ context: AIToolContext) -> AIToolResultPayload {
-        .success(.object([
-            "monthly_income_fallback": .from(Decimal(context.monthlyIncomeCents) / 100)
         ]))
     }
 
@@ -112,6 +107,88 @@ enum AIToolReaders {
         let ref = context.referenceDate(from: args)
         let summary = context.monthSummary(referenceDate: ref)
         return .success(.object(AIToolFormatters.monthPaceJSON(summary)))
+    }
+
+    private static func getDashboardInsight(_ args: [String: Any], _ context: AIToolContext) -> AIToolResultPayload {
+        let monthKey = resolveDashboardInsightMonthKey(args, context: context)
+        let referenceDate = monthKeyReferenceDate(monthKey, calendar: context.calendar) ?? context.now
+        let referenceMonth = referenceDate.formatted(.dateTime.month(.wide).year().locale(Money.locale)).capitalized
+
+        guard let insight = AIInsightsService.cachedInsight(monthKey: monthKey) else {
+            return .success(.object([
+                "month_key": .string(monthKey),
+                "reference_month": .string(referenceMonth),
+                "available": .bool(false),
+                "insight": .null
+            ]))
+        }
+
+        var payload: [String: AIToolJSONValue] = [
+            "month_key": .string(monthKey),
+            "reference_month": .string(referenceMonth),
+            "available": .bool(true),
+            "insight": .string(insight)
+        ]
+        if let cachedAt = AIInsightsService.cachedInsightDate(monthKey: monthKey) {
+            payload["generated_at"] = .string(cachedAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        return .success(.object(payload))
+    }
+
+    private static func getWishlistInsight(_ args: [String: Any], _ context: AIToolContext) -> AIToolResultPayload {
+        let monthKey = resolveWishlistInsightMonthKey(args, context)
+        let referenceDate = monthKeyReferenceDate(monthKey, calendar: context.calendar) ?? context.now
+        let referenceMonth = referenceDate.formatted(.dateTime.month(.wide).year().locale(Money.locale)).capitalized
+
+        guard let insight = AIWishlistInsightService.cachedInsight(monthKey: monthKey) else {
+            return .success(.object([
+                "month_key": .string(monthKey),
+                "reference_month": .string(referenceMonth),
+                "available": .bool(false),
+                "insight": .null
+            ]))
+        }
+
+        var payload: [String: AIToolJSONValue] = [
+            "month_key": .string(monthKey),
+            "reference_month": .string(referenceMonth),
+            "available": .bool(true),
+            "insight": .string(insight)
+        ]
+        if let cachedAt = AIWishlistInsightService.cachedInsightDate(monthKey: monthKey) {
+            payload["generated_at"] = .string(cachedAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        return .success(.object(payload))
+    }
+
+    private static func resolveWishlistInsightMonthKey(_ args: [String: Any], _ context: AIToolContext) -> String {
+        if let monthKey = AIToolJSON.string(args, key: "month_key"), !monthKey.isEmpty {
+            return monthKey
+        }
+        if let monthKey = context.wishlistInsightMonthKey {
+            return monthKey
+        }
+        let ref = context.referenceDate(from: args)
+        return AIInsightsService.monthKey(for: ref, calendar: context.calendar)
+    }
+
+    private static func resolveDashboardInsightMonthKey(_ args: [String: Any], context: AIToolContext) -> String {
+        if let monthKey = AIToolJSON.string(args, key: "month_key"), !monthKey.isEmpty {
+            return monthKey
+        }
+        if let monthKey = context.dashboardInsightMonthKey {
+            return monthKey
+        }
+        let ref = context.referenceDate(from: args)
+        return AIInsightsService.monthKey(for: ref, calendar: context.calendar)
+    }
+
+    private static func monthKeyReferenceDate(_ monthKey: String, calendar: Calendar) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: monthKey)
     }
 
     private static func compareMonths(_ args: [String: Any], _ context: AIToolContext) -> AIToolResultPayload {

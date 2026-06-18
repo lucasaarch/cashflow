@@ -89,9 +89,9 @@ struct CategoryBreakdownContent: View {
                     .lineLimit(1)
                 Spacer()
                 Text(item.total.brl(masked: privacy.valuesHidden))
-                    .font(.caption.monospacedDigit().weight(.medium))
+                    .font(CFTheme.dashboardAmount())
                 Text(percentFormatter.string(from: NSNumber(value: share)) ?? "")
-                    .font(.caption2)
+                    .font(CFTheme.dashboardMeta())
                     .foregroundStyle(CFTheme.textTertiary)
                     .frame(width: 32, alignment: .trailing)
             }
@@ -147,7 +147,7 @@ struct AccountBreakdownContent: View {
                 .lineLimit(1)
             Spacer()
             Text(item.total.brl(masked: privacy.valuesHidden))
-                .font(.caption.monospacedDigit().weight(.medium))
+                .font(CFTheme.dashboardAmount())
                 .foregroundStyle(isCard ? CFTheme.debt : CFTheme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -19,6 +19,12 @@ final class AIChatPanelState: ObservableObject {
     /// view sits in a LazyVStack, so views are recreated when scrolled offscreen;
     /// without this we'd replay the reveal every time.
     @Published var typedMessageIDs: Set<UUID> = []
+    /// When set, `get_dashboard_insight` prefers this month (yyyy-MM).
+    @Published var dashboardInsightMonthKey: String?
+    /// When set, `get_wishlist_insight` prefers this month (yyyy-MM).
+    @Published var wishlistInsightMonthKey: String?
+    /// Signals AIChatSidePanel to focus the input and auto-send the current draft.
+    @Published private(set) var insightLaunchToken: UUID?
 
     init() {
         let saved = UserDefaults.standard.double(forKey: UserDefaultsKeys.aiChatPanelWidth)
@@ -29,15 +35,75 @@ final class AIChatPanelState: ObservableObject {
         }
     }
 
-    func toggle() { isOpen.toggle() }
+    func toggle() {
+        if isOpen {
+            isOpen = false
+        } else {
+            openFresh()
+        }
+    }
+
     func close() { isOpen = false }
-    func open() { isOpen = true }
+
+    func openFresh() {
+        clearInsightDiscussionContext()
+        isOpen = true
+    }
+
+    func openToDiscussDashboardInsight(referenceDate: Date, calendar: Calendar = .current) {
+        let monthKey = AIInsightsService.monthKey(for: referenceDate, calendar: calendar)
+        let monthLabel = referenceDate
+            .formatted(.dateTime.month(.wide).year().locale(Money.locale))
+            .capitalized
+        openForInsightDiscussion(
+            dashboardMonthKey: monthKey,
+            wishlistMonthKey: nil,
+            draft: "Quero conversar sobre o resumo da \(AIAssistantIdentity.name) de \(monthLabel)."
+        )
+    }
+
+    func openToDiscussWishlistInsight(referenceDate: Date, calendar: Calendar = .current) {
+        let monthKey = AIInsightsService.monthKey(for: referenceDate, calendar: calendar)
+        let monthLabel = referenceDate
+            .formatted(.dateTime.month(.wide).year().locale(Money.locale))
+            .capitalized
+        openForInsightDiscussion(
+            dashboardMonthKey: nil,
+            wishlistMonthKey: monthKey,
+            draft: "Quero conversar sobre a sugestão da lista de desejos de \(monthLabel)."
+        )
+    }
+
+    func consumeInsightLaunchToken() -> UUID? {
+        let token = insightLaunchToken
+        insightLaunchToken = nil
+        return token
+    }
 
     func setPanelWidth(_ width: CGFloat) {
         let clamped = Self.clampWidth(width)
         guard clamped != panelWidth else { return }
         panelWidth = clamped
         UserDefaults.standard.set(Double(clamped), forKey: UserDefaultsKeys.aiChatPanelWidth)
+    }
+
+    private func openForInsightDiscussion(
+        dashboardMonthKey: String?,
+        wishlistMonthKey: String?,
+        draft: String
+    ) {
+        clearInsightDiscussionContext()
+        dashboardInsightMonthKey = dashboardMonthKey
+        wishlistInsightMonthKey = wishlistMonthKey
+        self.draft = draft
+        insightLaunchToken = UUID()
+        isOpen = true
+    }
+
+    private func clearInsightDiscussionContext() {
+        dashboardInsightMonthKey = nil
+        wishlistInsightMonthKey = nil
+        insightLaunchToken = nil
     }
 
     private static func clampWidth(_ width: CGFloat) -> CGFloat {

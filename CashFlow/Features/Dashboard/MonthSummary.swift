@@ -2,9 +2,6 @@ import Foundation
 
 struct MonthSummary {
     let referenceDate: Date
-    /// Fallback used only when nothing else is registered (no recurring incomes, no receivables,
-    /// no realized income this month). Coming from `AppSettings.monthlyIncomeCents`.
-    let monthlyIncomeFallback: Decimal
     private let transactions: [Transaction]
     private let pendingReceivables: [Receivable]
     private let calendar: Calendar
@@ -12,14 +9,12 @@ struct MonthSummary {
 
     init(
         referenceDate: Date,
-        monthlyIncomeFallback: Decimal,
         transactions: [Transaction],
         pendingReceivables: [Receivable] = [],
         calendar: Calendar = .current,
         now: Date = .now
     ) {
         self.referenceDate = referenceDate
-        self.monthlyIncomeFallback = monthlyIncomeFallback
         self.transactions = transactions
         self.pendingReceivables = pendingReceivables
         self.calendar = calendar
@@ -109,17 +104,8 @@ struct MonthSummary {
 
     /// Total income realistically expected for the whole month:
     /// already-realized + planned (future-dated) income transactions + pending receivables.
-    /// Falls back to the legacy manual budget only when none of these are registered.
     var expectedIncome: Decimal {
-        let computed = totalIncome + plannedIncome + pendingReceivableIncome
-        return computed > 0 ? computed : monthlyIncomeFallback
-    }
-
-    /// True when there's no income data at all (realized, planned or receivable) and the
-    /// summary is using the manual `monthlyIncomeFallback`. UI can use this to show the
-    /// fallback editor only when it's actually the active signal.
-    var usesFallbackIncome: Bool {
-        totalIncome + plannedIncome + pendingReceivableIncome == 0
+        totalIncome + plannedIncome + pendingReceivableIncome
     }
 
     /// Honest cash-flow saldo: what actually came in minus what actually went out so far.

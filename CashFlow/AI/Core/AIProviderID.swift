@@ -4,13 +4,11 @@ enum AIProviderID: String, CaseIterable, Codable, Hashable, Identifiable {
     var id: Self { self }
     case openai
     case anthropic
-    case ollama
 
     var displayName: String {
         switch self {
         case .openai: return "OpenAI"
         case .anthropic: return "Anthropic"
-        case .ollama: return "Local (Ollama)"
         }
     }
 
@@ -18,7 +16,6 @@ enum AIProviderID: String, CaseIterable, Codable, Hashable, Identifiable {
         switch self {
         case .openai: return "brain.head.profile"
         case .anthropic: return "sparkles"
-        case .ollama: return "server.rack"
         }
     }
 }

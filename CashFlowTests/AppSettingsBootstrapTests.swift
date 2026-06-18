@@ -4,10 +4,7 @@ import SwiftData
 
 @MainActor
 final class AppSettingsBootstrapTests: XCTestCase {
-    func testEnsureExistsMigratesLegacyUserDefaults() throws {
-        let defaults = UserDefaults.standard
-        defaults.set(42_500, forKey: UserDefaultsKeys.monthlyIncomeCents)
-
+    func testEnsureExistsCreatesSingleton() throws {
         let schema = Schema([AppSettings.self])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
@@ -20,9 +17,7 @@ final class AppSettingsBootstrapTests: XCTestCase {
         )
         let settings = try context.fetch(descriptor)
         XCTAssertEqual(settings.count, 1)
-        XCTAssertEqual(settings[0].monthlyIncomeCents, 42_500)
-
-        defaults.removeObject(forKey: UserDefaultsKeys.monthlyIncomeCents)
+        XCTAssertEqual(settings[0].id, AppSettingsBootstrap.defaultID)
     }
 
     func testEnsureExistsIsIdempotent() throws {

@@ -90,8 +90,6 @@ final class AIService: ObservableObject {
             return OpenAIProvider(configuration: configuration)
         case .anthropic:
             return AnthropicProvider(configuration: configuration)
-        case .ollama:
-            return OllamaProvider(configuration: configuration)
         }
     }
 }

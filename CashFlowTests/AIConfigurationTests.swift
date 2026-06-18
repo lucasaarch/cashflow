@@ -18,9 +18,11 @@ final class AIConfigurationTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOllamaDefaults() {
+    func testActiveProviderIgnoresLegacyUnsupportedProviderValues() {
+        defaults.set("local", forKey: UserDefaultsKeys.aiActiveProvider)
         let config = AIConfiguration(defaults: defaults)
-        XCTAssertEqual(config.ollamaHost, "127.0.0.1")
-        XCTAssertEqual(config.ollamaPort, 11434)
+
+        XCTAssertNil(config.activeProvider)
+        XCTAssertNil(defaults.string(forKey: UserDefaultsKeys.aiActiveProvider))
     }
 }

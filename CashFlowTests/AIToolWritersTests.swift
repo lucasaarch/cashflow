@@ -8,7 +8,7 @@ final class AIToolWritersTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        container = PreviewData.container
+        container = ModelContainerFactory.make(inMemory: true)
         context = container.mainContext
     }
 
@@ -57,8 +57,7 @@ final class AIToolWritersTests: XCTestCase {
             recurringExpenses: [],
             recurringIncomes: [],
             categories: [],
-            wishlistItems: wishlistItems,
-            monthlyIncomeCents: 500_000
+            wishlistItems: wishlistItems
         )
     }
 }

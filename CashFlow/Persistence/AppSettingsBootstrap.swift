@@ -4,7 +4,7 @@ import SwiftData
 enum AppSettingsBootstrap {
     static let defaultID = "default"
 
-    /// Garante a linha singleton e migra `monthlyIncomeCents` legado do UserDefaults uma vez.
+    /// Garante a linha singleton de preferências do app.
     static func ensureExists(context: ModelContext) {
         let descriptor = FetchDescriptor<AppSettings>(
             predicate: #Predicate { $0.id == "default" }
@@ -14,8 +14,7 @@ enum AppSettingsBootstrap {
             return
         }
 
-        let legacyCents = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyIncomeCents)
-        context.insert(AppSettings(monthlyIncomeCents: legacyCents))
+        context.insert(AppSettings())
         try? context.save()
     }
 }

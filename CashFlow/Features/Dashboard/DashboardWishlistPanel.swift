@@ -3,8 +3,10 @@ import SwiftData
 
 struct DashboardWishlistPanel: View {
     @EnvironmentObject private var aiService: AIService
+    @EnvironmentObject private var chatPanelState: AIChatPanelState
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     let referenceDate: Date
     let summary: MonthSummary
@@ -18,7 +20,6 @@ struct DashboardWishlistPanel: View {
     let recurringExpenses: [RecurringExpense]
     let recurringIncomes: [RecurringIncome]
     let categories: [Category]
-    let monthlyIncomeCents: Int
 
     @State private var insightText: String?
     @State private var insightLoading = false
@@ -26,9 +27,16 @@ struct DashboardWishlistPanel: View {
     @State private var insightIsFresh = false
 
     private var monthKey: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        return formatter.string(from: referenceDate)
+        AIInsightsService.monthKey(for: referenceDate)
+    }
+
+    private var hasCachedInsight: Bool {
+        AIWishlistInsightService.cachedInsight(monthKey: monthKey) != nil
+    }
+
+    private var displayInsight: String? {
+        if let insightText { return insightText }
+        return AIWishlistInsightService.cachedInsight(monthKey: monthKey)
     }
 
     private var totalEstimated: Decimal {
@@ -56,7 +64,7 @@ struct DashboardWishlistPanel: View {
 
                 itemsList
 
-                if aiService.configuration.isReady {
+                if aiService.configuration.isReady || hasCachedInsight {
                     gioSection
                     if let insightError {
                         Text(insightError)
@@ -67,19 +75,15 @@ struct DashboardWishlistPanel: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .overlay {
-            if insightIsFresh && !reduceMotion {
-                RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                    .stroke(CFTheme.accent.opacity(0.35), lineWidth: 1.2)
-                    .blur(radius: 4)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
-        }
+        .cfAIGlow(active: insightLoading || insightIsFresh)
         .animation(reduceMotion ? nil : CFMotion.gentle, value: insightIsFresh)
         .onAppear(perform: loadCachedInsight)
         .onChange(of: referenceDate) { _, _ in loadCachedInsight() }
         .onChange(of: wishlistItems.count) { _, _ in loadCachedInsight() }
+        .onChange(of: aiService.configuration.isReady) { _, _ in loadCachedInsight() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { loadCachedInsight() }
+        }
     }
 
     private var panelHeader: some View {
@@ -91,7 +95,7 @@ struct DashboardWishlistPanel: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CFTheme.textPrimary)
             Spacer(minLength: 0)
-            if insightText != nil, !insightLoading, aiService.configuration.isReady {
+            if displayInsight != nil, !insightLoading, aiService.configuration.isReady {
                 Button {
                     Task { await generateInsight(force: true) }
                 } label: {
@@ -129,26 +133,35 @@ struct DashboardWishlistPanel: View {
                 .font(CFTheme.caption())
                 .foregroundStyle(CFTheme.textSecondary)
                 .textCase(.uppercase)
-                .padding(.horizontal, 2)
 
             if insightLoading {
-                VStack(alignment: .leading, spacing: 10) {
-                    CFSkeletonLine(height: 11, widthFraction: 0.9)
-                    CFSkeletonLine(height: 11, widthFraction: 0.75)
+                CFThinkingDots()
+                    .padding(.vertical, 4)
+            } else if let displayInsight, !displayInsight.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    if insightIsFresh {
+                        CFTypewriter(text: displayInsight, markdown: true, animated: true)
+                            .font(CFTheme.caption())
+                            .foregroundStyle(CFTheme.textSecondary)
+                            .lineSpacing(3)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        CFMarkdownText(text: displayInsight, lineSpacing: 3)
+                    }
+
+                    if aiService.configuration.isReady {
+                        CFPillButton(title: "Conversar sobre isso", icon: "bubble.left.and.text.bubble.right", style: .ghost) {
+                            chatPanelState.openToDiscussWishlistInsight(referenceDate: referenceDate)
+                        }
+                    }
                 }
-                .padding(.vertical, 4)
-            } else if let insightText, !insightText.isEmpty {
-                CFTypewriter(text: insightText, markdown: true, animated: insightIsFresh)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
-                    .lineSpacing(3)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            } else {
+            } else if aiService.configuration.isReady {
                 CFPillButton(title: "Gerar sugestão", icon: "sparkles", style: .ghost) {
                     Task { await generateInsight(force: false) }
                 }
             }
         }
+        .padding(.horizontal, 2)
         .padding(.top, 4)
     }
 
@@ -179,12 +192,11 @@ struct DashboardWishlistPanel: View {
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
                 categories: categories,
-                monthlyIncomeCents: monthlyIncomeCents,
                 modelContext: modelContext,
                 aiService: aiService
             )
             AIWishlistInsightService.cacheInsight(text, monthKey: monthKey)
-            insightText = text
+            insightText = AIWishlistInsightService.cachedInsight(monthKey: monthKey)
             insightIsFresh = true
             Task {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)

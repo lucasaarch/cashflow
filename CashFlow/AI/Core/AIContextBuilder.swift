@@ -2,7 +2,6 @@ import Foundation
 
 struct FinancialAIContextInput {
     let referenceDate: Date
-    let monthlyIncomeCents: Int
     let transactions: [Transaction]
     let accounts: [Account]
     let bills: [Bill]
@@ -28,13 +27,11 @@ enum AIContextBuilder {
         goals: [FinancialGoal] = [],
         recurringExpenses: [RecurringExpense] = [],
         recurringIncomes: [RecurringIncome] = [],
-        monthlyIncomeCents: Int,
         referenceDate: Date = .now,
         calendar: Calendar = .current
     ) -> String {
         let input = FinancialAIContextInput(
             referenceDate: referenceDate,
-            monthlyIncomeCents: monthlyIncomeCents,
             transactions: transactions,
             accounts: accounts,
             bills: bills,
@@ -59,13 +56,11 @@ enum AIContextBuilder {
         recurringExpenses: [RecurringExpense],
         recurringIncomes: [RecurringIncome],
         previousMonthExpense: Decimal,
-        monthlyIncomeCents: Int,
         calendar: Calendar = .current,
         now: Date = .now
     ) -> String {
         let input = FinancialAIContextInput(
             referenceDate: summary.referenceDate,
-            monthlyIncomeCents: monthlyIncomeCents,
             transactions: transactions,
             accounts: accounts,
             bills: bills,
@@ -88,7 +83,6 @@ enum AIContextBuilder {
     ) -> String {
         let summary = MonthSummary(
             referenceDate: input.referenceDate,
-            monthlyIncomeFallback: Decimal(input.monthlyIncomeCents) / 100,
             transactions: input.transactions,
             pendingReceivables: input.receivables,
             calendar: input.calendar,
@@ -178,9 +172,6 @@ enum AIContextBuilder {
         let month = input.referenceDate.formatted(.dateTime.month(.wide).year())
         var lines = ["=== CONTEXTO FINANCEIRO — \(month) ===", ""]
         lines.append("Data de referência: \(input.now.formatted(date: .abbreviated, time: .omitted))")
-        if summary.usesFallbackIncome, input.monthlyIncomeCents > 0 {
-            lines.append("Renda esperada (fallback manual): \((Decimal(input.monthlyIncomeCents) / 100).brl)")
-        }
         return lines.joined(separator: "\n")
     }
 
@@ -229,7 +220,7 @@ enum AIContextBuilder {
         if summary.plannedExpense > 0 {
             lines.append("- Previsto sair (lançamentos futuros no mês): \(summary.plannedExpense.brl)")
         }
-        lines.append("- Renda esperada para o mês: \(summary.expectedIncome.brl) (\(summary.usesFallbackIncome ? "fallback manual" : "rendas fixas + receivables + previstos"))")
+        lines.append("- Renda esperada para o mês: \(summary.expectedIncome.brl)")
         lines.append("- Saldo projetado fim do mês: \(summary.projectedBalance.brl)")
         if summary.expectedIncome > 0 {
             lines.append("- Ritmo: \(summary.paceState.label) (\(Int(summary.spentRatio * 100))% da renda esperada gasta, \(Int(summary.dayProgress * 100))% do mês transcorrido)")

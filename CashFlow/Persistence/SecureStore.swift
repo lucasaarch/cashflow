@@ -9,14 +9,14 @@ enum SecureStore {
 
     #if DEBUG
     /// Isolates unit tests from the user's real keychain entries (see `SecureStoreTests`).
-    private static var storageScopeSuffix: String?
+    nonisolated(unsafe) private static var storageScopeSuffix: String?
 
-    static func setStorageScopeForTesting(_ suffix: String?) {
+    nonisolated static func setStorageScopeForTesting(_ suffix: String?) {
         storageScopeSuffix = suffix
     }
     #endif
 
-    private static var service: String {
+    nonisolated private static var service: String {
         let base = Bundle.main.bundleIdentifier ?? "com.lucasarch.CashFlow"
         #if DEBUG
         if let storageScopeSuffix { return base + storageScopeSuffix }
@@ -24,16 +24,13 @@ enum SecureStore {
         return base
     }
 
-    static func save(_ value: String, for key: Key) throws {
+    nonisolated static func save(_ value: String, for key: Key) throws {
         let data = Data(value.utf8)
         let query = baseQuery(for: key)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
-
-        SecItemDelete(legacyQuery(for: key) as CFDictionary)
-        SecItemDelete(unscopedQuery(for: key) as CFDictionary)
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
@@ -52,13 +49,20 @@ enum SecureStore {
         throw AIError.providerError("Falha ao salvar credencial (\(updateStatus)).")
     }
 
-    static func read(_ key: Key) -> String? {
+    nonisolated static func read(_ key: Key) -> String? {
         if let value = readData(matching: readQuery(for: key)) {
             return value
         }
 
+        #if DEBUG
+        if storageScopeSuffix != nil {
+            return nil
+        }
+        #endif
+
         if let value = readData(matching: unscopedReadQuery(for: key)) {
             try? save(value, for: key)
+            SecItemDelete(unscopedQuery(for: key) as CFDictionary)
             return value
         }
 
@@ -71,27 +75,33 @@ enum SecureStore {
         return nil
     }
 
-    static func delete(_ key: Key) {
+    nonisolated static func delete(_ key: Key) {
         SecItemDelete(baseQuery(for: key) as CFDictionary)
         SecItemDelete(unscopedQuery(for: key) as CFDictionary)
+        #if DEBUG
+        if storageScopeSuffix == nil {
+            SecItemDelete(legacyQuery(for: key) as CFDictionary)
+        }
+        #else
         SecItemDelete(legacyQuery(for: key) as CFDictionary)
+        #endif
     }
 
-    static func maskedValue(for key: Key) -> String? {
+    nonisolated static func maskedValue(for key: Key) -> String? {
         guard let value = read(key), !value.isEmpty else { return nil }
         return "••••••••" + String(value.suffix(4))
     }
 
     // MARK: - Keychain queries
 
-    private static func accessGroup() -> String? {
+    nonisolated private static func accessGroup() -> String? {
         guard let task = SecTaskCreateFromSelf(nil),
               let groups = SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) as? [String]
         else { return nil }
         return groups.first
     }
 
-    private static func baseQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func baseQuery(for key: Key) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -103,7 +113,7 @@ enum SecureStore {
         return query
     }
 
-    private static func readQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func readQuery(for key: Key) -> [String: Any] {
         var query = baseQuery(for: key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -111,7 +121,7 @@ enum SecureStore {
     }
 
     /// Items saved before the access group was added to the keychain query.
-    private static func unscopedQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func unscopedQuery(for key: Key) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -119,7 +129,7 @@ enum SecureStore {
         ]
     }
 
-    private static func unscopedReadQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func unscopedReadQuery(for key: Key) -> [String: Any] {
         var query = unscopedQuery(for: key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -127,21 +137,21 @@ enum SecureStore {
     }
 
     /// Pre-migration items stored without `kSecAttrService` (unstable across rebuilds in sandbox).
-    private static func legacyQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func legacyQuery(for key: Key) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key.rawValue
         ]
     }
 
-    private static func legacyReadQuery(for key: Key) -> [String: Any] {
+    nonisolated private static func legacyReadQuery(for key: Key) -> [String: Any] {
         var query = legacyQuery(for: key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return query
     }
 
-    private static func readData(matching query: [String: Any]) -> String? {
+    nonisolated private static func readData(matching query: [String: Any]) -> String? {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }
