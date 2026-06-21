@@ -39,6 +39,10 @@ struct BillListView: View {
             .sorted { ($0.paidOn ?? .distantPast) > ($1.paidOn ?? .distantPast) }
     }
 
+    private var pendingTotal: Decimal {
+        (overdue + upcoming).reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
         Group {
             if bills.filter({ $0.status != .cancelled }).isEmpty {
@@ -106,12 +110,14 @@ struct BillListView: View {
         ScrollViewReader { proxy in
             CFGlassPage {
                 CFGlassPageStack {
+                    summaryHeader(staggerIndex: 0)
+
                     ForEach(Array(billSections.enumerated()), id: \.offset) { index, section in
                         billSection(
                             title: section.title,
                             tint: section.tint,
                             bills: section.bills,
-                            staggerIndex: index
+                            staggerIndex: index + 1
                         )
                     }
                 }
@@ -131,6 +137,36 @@ struct BillListView: View {
             )
             #endif
         }
+    }
+
+    private func summaryHeader(staggerIndex: Int) -> some View {
+        CFGlassSummaryPanel(title: "Total a pagar", staggerIndex: staggerIndex, tint: CFTheme.expense) {
+            CFAnimatedAmount(
+                amount: pendingTotal,
+                font: CFTheme.heroAmount(),
+                color: CFTheme.textPrimary
+            )
+
+            if let breakdown = billsSummaryBreakdown {
+                Text(breakdown)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var billsSummaryBreakdown: String? {
+        var parts: [String] = []
+        let overdueTotal = overdue.reduce(0) { $0 + $1.amount }
+        let upcomingTotal = upcoming.reduce(0) { $0 + $1.amount }
+        if overdueTotal > 0 {
+            parts.append("Vencidas \(overdueTotal.brl)")
+        }
+        if upcomingTotal > 0 {
+            parts.append("A vencer \(upcomingTotal.brl)")
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
     }
 
     private func billSection(

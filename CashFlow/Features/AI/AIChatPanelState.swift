@@ -82,9 +82,9 @@ final class AIChatPanelState: ObservableObject {
             }
             return
         }
-        withAnimation(CFMotion.quick) {
-            isOpen = open
-        }
+        // Animação visual fica no AIChatPresentationModifier (.animation snappy).
+        // withAnimation aqui competia com o modifier e podia travar o inspector invisível.
+        isOpen = open
     }
 
     func openToDiscussDashboardInsight(referenceDate: Date, calendar: Calendar = .current) {

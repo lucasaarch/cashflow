@@ -13,11 +13,23 @@ struct MCPHTTPResponse {
     var statusCode: Int
     var headers: [String: String]
     var body: Data
+    /// When true, the HTTP server keeps the TCP connection open (SSE stream).
+    var keepsConnectionOpen: Bool = false
+    /// Session to associate with a persistent SSE connection.
+    var sseSessionID: String?
 
-    init(statusCode: Int = 200, headers: [String: String] = [:], body: Data = Data()) {
+    init(
+        statusCode: Int = 200,
+        headers: [String: String] = [:],
+        body: Data = Data(),
+        keepsConnectionOpen: Bool = false,
+        sseSessionID: String? = nil
+    ) {
         self.statusCode = statusCode
         self.headers = headers
         self.body = body
+        self.keepsConnectionOpen = keepsConnectionOpen
+        self.sseSessionID = sseSessionID
     }
 
     static func json(_ object: Any, statusCode: Int = 200, extraHeaders: [String: String] = [:]) -> MCPHTTPResponse {
@@ -57,6 +69,20 @@ struct MCPHTTPResponse {
             body: body
         )
     }
+
+    static func sseStream(extraHeaders: [String: String] = [:], sessionID: String) -> MCPHTTPResponse {
+        MCPHTTPResponse(
+            statusCode: 200,
+            headers: [
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            ].merging(extraHeaders) { _, new in new },
+            keepsConnectionOpen: true,
+            sseSessionID: sessionID
+        )
+    }
 }
 
 enum MCPJSONRPC {
@@ -87,6 +113,7 @@ final class MCPRequestHandler {
     private let container: ModelContainer
     private var sessions: Set<String> = []
     private var isInitialized = false
+    var onCloseSession: ((String) -> Void)?
 
     init(container: ModelContainer) {
         self.container = container
@@ -98,8 +125,15 @@ final class MCPRequestHandler {
             return handleDelete(sessionID: request.headers["mcp-session-id"])
         }
 
+        if request.method == "GET", request.path == MCPConfiguration.endpointPath {
+            return handleSSEGet(request)
+        }
+
         guard request.method == "POST", request.path == MCPConfiguration.endpointPath else {
             MCPLogger.http.debug("Unhandled route: \(request.method, privacy: .public) \(request.path, privacy: .public)")
+            if request.path == MCPConfiguration.endpointPath {
+                return MCPHTTPResponse(statusCode: 405, headers: ["Connection": "close", "Content-Length": "0"])
+            }
             return MCPHTTPResponse.text("Not Found", statusCode: 404)
         }
 
@@ -152,9 +186,26 @@ final class MCPRequestHandler {
     private func handleDelete(sessionID: String?) -> MCPHTTPResponse {
         if let sessionID {
             sessions.remove(sessionID)
+            onCloseSession?(sessionID)
             MCPLogger.rpc.info("Session ended id=\(sessionID, privacy: .public) active=\(self.sessions.count)")
         }
         return MCPHTTPResponse(statusCode: 204, headers: ["Connection": "close", "Content-Length": "0"])
+    }
+
+    private func handleSSEGet(_ request: MCPHTTPRequest) -> MCPHTTPResponse {
+        guard acceptsEventStream(request.headers) else {
+            MCPLogger.http.error("GET /mcp rejected: missing text/event-stream Accept")
+            return MCPHTTPResponse.text("Not Acceptable", statusCode: 406)
+        }
+
+        guard sessionIsValid(for: request) else {
+            MCPLogger.rpc.error("GET SSE rejected: invalid session")
+            return MCPHTTPResponse.text("Bad Request", statusCode: 400)
+        }
+
+        let sessionID = request.headers["mcp-session-id"] ?? ""
+        MCPLogger.rpc.info("Opening SSE stream session=\(sessionID, privacy: .public)")
+        return MCPHTTPResponse.sseStream(extraHeaders: sessionHeader(for: request), sessionID: sessionID)
     }
 
     private func handleInitialize(id: Any?) -> MCPHTTPResponse {
@@ -252,6 +303,11 @@ final class MCPRequestHandler {
     private func acceptsMCP(_ headers: [String: String]) -> Bool {
         guard let accept = headers["accept"]?.lowercased() else { return true }
         return accept.contains("application/json") || accept.contains("text/event-stream") || accept.contains("*/*")
+    }
+
+    private func acceptsEventStream(_ headers: [String: String]) -> Bool {
+        guard let accept = headers["accept"]?.lowercased() else { return false }
+        return accept.contains("text/event-stream") || accept.contains("*/*")
     }
 }
 

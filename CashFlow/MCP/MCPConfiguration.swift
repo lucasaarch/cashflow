@@ -6,7 +6,7 @@ enum MCPConfiguration {
     static let endpointPath = "/mcp"
     static let serverURL = "http://\(host):\(port)\(endpointPath)"
     static let serverName = "cashflow"
-    static let protocolVersion = "2024-11-05"
+    static let protocolVersion = "2025-03-26"
 
     static var isSupportedPlatform: Bool {
         #if os(macOS)

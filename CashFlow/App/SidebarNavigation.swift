@@ -136,32 +136,7 @@ struct AIChatPresentationModifier: ViewModifier {
     func body(content: Content) -> some View {
         Group {
             if usesInlineChatInspector {
-                if chatPanelState.isOpen {
-                    HStack(spacing: 0) {
-                        content
-                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-                            .toolbar { chatToolbarItems }
-
-                        Color.clear
-                            .frame(width: displayedPanelWidth)
-                            .accessibilityHidden(true)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .overlay(alignment: .trailing) {
-                        AIChatInspectorColumn(
-                            liveWidth: $liveResizeWidth,
-                            aiService: aiService
-                        )
-                        .frame(width: displayedPanelWidth)
-                        .frame(maxHeight: .infinity)
-                        .ignoresSafeArea()
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    .animation(chatPanelState.isResizing ? nil : CFMotion.snappy, value: chatPanelState.isOpen)
-                } else {
-                    content
-                        .toolbar { chatToolbarItems }
-                }
+                inlineChatLayout(content: content)
             } else {
                 content
                     .toolbar { chatToolbarItems }
@@ -173,6 +148,44 @@ struct AIChatPresentationModifier: ViewModifier {
             }
         }
         .onPreferenceChange(DetailToolbarAddPreferenceKey.self) { detailToolbarAdd = $0 }
+    }
+
+    /// Hierarquia estável: evita trocar o ramo inteiro ao abrir/fechar, o que podia
+    /// deixar o overlay preso em opacity 0 com a transição move+opacity.
+    private func inlineChatLayout(content: Content) -> some View {
+        HStack(spacing: 0) {
+            content
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                .toolbar { chatToolbarItems }
+
+            Color.clear
+                .frame(width: chatPanelState.isOpen ? displayedPanelWidth : 0)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .trailing) {
+            if chatPanelState.isOpen {
+                AIChatInspectorColumn(
+                    liveWidth: $liveResizeWidth,
+                    aiService: aiService
+                )
+                .frame(width: displayedPanelWidth)
+                .frame(maxHeight: .infinity)
+                .ignoresSafeArea()
+            }
+        }
+        .animation(inlinePanelAnimation, value: chatPanelState.isOpen)
+        .animation(inlinePanelAnimation, value: displayedPanelWidth)
+        .onChange(of: chatPanelState.isOpen) { _, isOpen in
+            if !isOpen {
+                liveResizeWidth = nil
+            }
+        }
+    }
+
+    private var inlinePanelAnimation: Animation? {
+        chatPanelState.isResizing ? nil : CFMotion.snappy
     }
 
     @ToolbarContentBuilder

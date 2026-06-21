@@ -132,6 +132,65 @@ final class MCPRequestHandlerTests: XCTestCase {
         XCTAssertEqual(MCPWriteProposalStore.shared.pendingWrite?.source, .mcp)
     }
 
+    func testGetMCPEndpointReturnsEventStream() {
+        let initResponse = handler.handle(makeJSONRPCRequest(method: "initialize", id: 1))
+        let sessionID = initResponse.headers["Mcp-Session-Id"]
+        XCTAssertNotNil(sessionID)
+
+        let response = handler.handle(
+            MCPHTTPRequest(
+                method: "GET",
+                path: MCPConfiguration.endpointPath,
+                headers: [
+                    "accept": "text/event-stream",
+                    "mcp-session-id": sessionID!
+                ],
+                body: Data()
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertTrue(response.keepsConnectionOpen)
+        XCTAssertEqual(response.headers["Content-Type"], "text/event-stream")
+        XCTAssertEqual(response.sseSessionID, sessionID)
+    }
+
+    func testGetMCPEndpointWithoutSessionReturnsBadRequest() {
+        let response = handler.handle(
+            MCPHTTPRequest(
+                method: "GET",
+                path: MCPConfiguration.endpointPath,
+                headers: ["accept": "text/event-stream"],
+                body: Data()
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testGetMCPEndpointWithoutEventStreamAcceptReturnsNotAcceptable() {
+        _ = handler.handle(makeJSONRPCRequest(method: "initialize", id: 1))
+
+        let response = handler.handle(
+            MCPHTTPRequest(
+                method: "GET",
+                path: MCPConfiguration.endpointPath,
+                headers: ["accept": "application/json"],
+                body: Data()
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 406)
+    }
+
+    func testInitializeAdvertisesStreamableHTTPProtocolVersion() throws {
+        let response = handler.handle(makeJSONRPCRequest(method: "initialize", id: 1))
+        let payload = try decodeJSONResponse(response)
+        let result = payload["result"] as? [String: Any]
+        XCTAssertEqual(result?["protocolVersion"] as? String, MCPConfiguration.protocolVersion)
+        XCTAssertEqual(MCPConfiguration.protocolVersion, "2025-03-26")
+    }
+
     func testApplyWriteProposalIsIdempotent() throws {
         _ = handler.handle(makeJSONRPCRequest(method: "initialize", id: 1))
 

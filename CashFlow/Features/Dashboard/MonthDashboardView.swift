@@ -278,6 +278,14 @@ struct MonthDashboardView: View {
             chartHeight: chartHeight(isSingleColumn: isSingleColumn)
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardNetWorthChartCard(
+            transactions: transactions,
+            accounts: accounts,
+            bills: bills,
+            chartHeight: chartHeight(isSingleColumn: isSingleColumn)
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -337,14 +345,6 @@ struct MonthDashboardView: View {
             highlightsPanel
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-
-        DashboardNetWorthChartCard(
-            transactions: transactions,
-            accounts: accounts,
-            bills: bills,
-            chartHeight: chartHeight(isSingleColumn: isSingleColumn)
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var monthNavigator: some View {

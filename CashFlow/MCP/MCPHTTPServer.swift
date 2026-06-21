@@ -8,6 +8,10 @@ final class MCPHTTPServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.lucasarch.cashflow.mcp.http", qos: .userInitiated)
     private var handler: RequestHandler?
+    private var activeSSE: [String: NWConnection] = [:]
+    private var keepaliveWorkItems: [ObjectIdentifier: DispatchWorkItem] = [:]
+
+    private static let sseKeepaliveInterval: TimeInterval = 30
 
     func start(host: String = MCPConfiguration.host, port: UInt16 = MCPConfiguration.port, handler: @escaping RequestHandler) throws {
         stop()
@@ -46,9 +50,28 @@ final class MCPHTTPServer {
     }
 
     func stop() {
+        queue.async { [weak self] in
+            self?.closeAllSSEStreams()
+        }
         listener?.cancel()
         listener = nil
         handler = nil
+    }
+
+    func closeSSEStream(sessionID: String) {
+        queue.async { [weak self] in
+            guard let self, let connection = self.activeSSE.removeValue(forKey: sessionID) else { return }
+            self.cancelKeepalive(for: connection)
+            connection.cancel()
+        }
+    }
+
+    private func closeAllSSEStreams() {
+        activeSSE.values.forEach { connection in
+            cancelKeepalive(for: connection)
+            connection.cancel()
+        }
+        activeSSE.removeAll()
     }
 
     private func accept(_ connection: NWConnection) {
@@ -114,6 +137,28 @@ final class MCPHTTPServer {
         for (key, value) in response.headers.sorted(by: { $0.key < $1.key }) {
             headerLines.append("\(canonicalHeaderName(key)): \(value)")
         }
+
+        if response.keepsConnectionOpen {
+            headerLines.append("")
+            headerLines.append("")
+            let data = Data(headerLines.joined(separator: "\r\n").utf8)
+            connection.send(content: data, completion: .contentProcessed { [weak self] _ in
+                guard let self else { return }
+                if let sessionID = response.sseSessionID, !sessionID.isEmpty {
+                    if let existing = self.activeSSE.removeValue(forKey: sessionID) {
+                        self.cancelKeepalive(for: existing)
+                        existing.cancel()
+                    }
+                    self.activeSSE[sessionID] = connection
+                }
+                self.startSSEKeepalive(on: connection)
+            })
+            return
+        }
+
+        if !response.headers.keys.contains(where: { $0.lowercased() == "content-length" }) {
+            headerLines.append("Content-Length: \(response.body.count)")
+        }
         headerLines.append("")
         headerLines.append("")
 
@@ -123,6 +168,23 @@ final class MCPHTTPServer {
         connection.send(content: data, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    private func startSSEKeepalive(on connection: NWConnection) {
+        func schedule() {
+            let keepalive = Data(": keepalive\r\n\r\n".utf8)
+            connection.send(content: keepalive, completion: .contentProcessed { [weak self] error in
+                guard let self, error == nil else { return }
+                let work = DispatchWorkItem { schedule() }
+                self.keepaliveWorkItems[ObjectIdentifier(connection)] = work
+                self.queue.asyncAfter(deadline: .now() + Self.sseKeepaliveInterval, execute: work)
+            })
+        }
+        schedule()
+    }
+
+    private func cancelKeepalive(for connection: NWConnection) {
+        keepaliveWorkItems.removeValue(forKey: ObjectIdentifier(connection))?.cancel()
     }
 }
 
@@ -179,6 +241,7 @@ enum HTTPStatusPhrase {
         case 204: return "No Content"
         case 400: return "Bad Request"
         case 404: return "Not Found"
+        case 405: return "Method Not Allowed"
         case 406: return "Not Acceptable"
         case 503: return "Service Unavailable"
         default: return "OK"
@@ -193,6 +256,8 @@ private func canonicalHeaderName(_ key: String) -> String {
     case "connection": return "Connection"
     case "mcp-session-id": return "Mcp-Session-Id"
     case "accept": return "Accept"
+    case "cache-control": return "Cache-Control"
+    case "x-accel-buffering": return "X-Accel-Buffering"
     default: return key
     }
 }

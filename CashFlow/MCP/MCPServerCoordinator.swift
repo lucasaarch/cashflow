@@ -70,6 +70,9 @@ final class MCPServerCoordinator: ObservableObject {
         let handler = MCPRequestHandler(container: container)
         requestHandler = handler
         let server = MCPHTTPServer()
+        handler.onCloseSession = { sessionID in
+            server.closeSSEStream(sessionID: sessionID)
+        }
 
         do {
             try server.start { [handler] request in

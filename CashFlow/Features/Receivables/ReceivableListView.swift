@@ -38,6 +38,10 @@ struct ReceivableListView: View {
             .sorted { ($0.receivedOn ?? .distantPast) > ($1.receivedOn ?? .distantPast) }
     }
 
+    private var pendingTotal: Decimal {
+        (late + upcoming).reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
         Group {
             if receivables.filter({ $0.status != .cancelled }).isEmpty {
@@ -95,12 +99,14 @@ struct ReceivableListView: View {
         ScrollViewReader { proxy in
             CFGlassPage {
                 CFGlassPageStack {
+                    summaryHeader(staggerIndex: 0)
+
                     ForEach(Array(receivableSections.enumerated()), id: \.offset) { index, section in
                         receivableSection(
                             title: section.title,
                             tint: section.tint,
                             items: section.items,
-                            staggerIndex: index
+                            staggerIndex: index + 1
                         )
                     }
                 }
@@ -120,6 +126,36 @@ struct ReceivableListView: View {
             )
             #endif
         }
+    }
+
+    private func summaryHeader(staggerIndex: Int) -> some View {
+        CFGlassSummaryPanel(title: "Total a receber", staggerIndex: staggerIndex, tint: CFTheme.income) {
+            CFAnimatedAmount(
+                amount: pendingTotal,
+                font: CFTheme.heroAmount(),
+                color: CFTheme.textPrimary
+            )
+
+            if let breakdown = receivablesSummaryBreakdown {
+                Text(breakdown)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var receivablesSummaryBreakdown: String? {
+        var parts: [String] = []
+        let lateTotal = late.reduce(0) { $0 + $1.amount }
+        let upcomingTotal = upcoming.reduce(0) { $0 + $1.amount }
+        if lateTotal > 0 {
+            parts.append("Atrasadas \(lateTotal.brl)")
+        }
+        if upcomingTotal > 0 {
+            parts.append("Previstas \(upcomingTotal.brl)")
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
     }
 
     private func receivableSection(
