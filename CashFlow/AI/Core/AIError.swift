@@ -1,6 +1,6 @@
 import Foundation
 
-enum AIError: LocalizedError, Equatable {
+enum AIError: Error, Sendable, LocalizedError, Equatable {
     case noActiveProvider
     case notConfigured(AIProviderID)
     case invalidCredentials
@@ -9,7 +9,7 @@ enum AIError: LocalizedError, Equatable {
     case providerError(String)
     case decodingFailed
 
-    var errorDescription: String? {
+    nonisolated var errorDescription: String? {
         switch self {
         case .noActiveProvider:
             return "Nenhum provedor de IA está ativo. Configure em Inteligência."
@@ -25,6 +25,27 @@ enum AIError: LocalizedError, Equatable {
             return message
         case .decodingFailed:
             return "Resposta inválida do provedor de IA."
+        }
+    }
+
+    nonisolated static func == (lhs: AIError, rhs: AIError) -> Bool {
+        switch (lhs, rhs) {
+        case (.noActiveProvider, .noActiveProvider):
+            return true
+        case (.notConfigured(let lhsID), .notConfigured(let rhsID)):
+            return lhsID == rhsID
+        case (.invalidCredentials, .invalidCredentials):
+            return true
+        case (.networkUnavailable(let lhsHost, let lhsPort), .networkUnavailable(let rhsHost, let rhsPort)):
+            return lhsHost == rhsHost && lhsPort == rhsPort
+        case (.modelNotFound(let lhsModel), .modelNotFound(let rhsModel)):
+            return lhsModel == rhsModel
+        case (.providerError(let lhsMessage), .providerError(let rhsMessage)):
+            return lhsMessage == rhsMessage
+        case (.decodingFailed, .decodingFailed):
+            return true
+        default:
+            return false
         }
     }
 }

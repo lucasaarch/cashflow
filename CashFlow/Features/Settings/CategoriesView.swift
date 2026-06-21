@@ -3,10 +3,17 @@ import SwiftData
 
 struct CategoriesView: View {
     @Environment(\.modelContext) private var modelContext
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
     @Query(sort: [SortDescriptor(\Category.sortOrder)]) private var categories: [Category]
 
     @State private var showingAdd = false
     @State private var editingCategory: Category?
+    #if os(macOS)
+    @State private var highlightedCategoryID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
     var expenseCategories: [Category] {
         categories.filter { $0.kind == .expense && !$0.isArchived }
@@ -20,6 +27,13 @@ struct CategoriesView: View {
         categories.filter { $0.isArchived }
     }
 
+    private var sectionCount: Int {
+        var count = 0
+        if !expenseCategories.isEmpty { count += 1 }
+        if !incomeCategories.isEmpty { count += 1 }
+        return count
+    }
+
     var body: some View {
         Group {
             if categories.isEmpty {
@@ -29,15 +43,8 @@ struct CategoriesView: View {
             }
         }
         .navigationTitle("Categorias")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Nova categoria", systemImage: "plus")
-                }
-                .help("Nova categoria")
-            }
+        .detailToolbarAdd(help: "Nova categoria") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             CategorySheet()
@@ -45,6 +52,7 @@ struct CategoriesView: View {
         .sheet(item: $editingCategory) { category in
             CategorySheet(editing: category)
         }
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -59,41 +67,78 @@ struct CategoriesView: View {
     }
 
     private var categoryList: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                if !expenseCategories.isEmpty {
-                    categorySection(title: "Despesas", items: expenseCategories, tint: CFTheme.expense)
-                }
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    if !expenseCategories.isEmpty {
+                        categorySection(
+                            title: "Despesas",
+                            items: expenseCategories,
+                            tint: CFTheme.expense,
+                            staggerIndex: 0
+                        )
+                    }
 
-                if !incomeCategories.isEmpty {
-                    categorySection(title: "Receitas", items: incomeCategories, tint: CFTheme.income)
-                }
+                    if !incomeCategories.isEmpty {
+                        categorySection(
+                            title: "Receitas",
+                            items: incomeCategories,
+                            tint: CFTheme.income,
+                            staggerIndex: expenseCategories.isEmpty ? 0 : 1
+                        )
+                    }
 
-                if !archivedCategories.isEmpty {
-                    archivedSection
+                    if !archivedCategories.isEmpty {
+                        CFGlassArchiveSection(
+                            title: "Arquivadas",
+                            staggerIndex: sectionCount,
+                            items: archivedCategories,
+                            systemName: { $0.symbolName },
+                            itemTitle: { $0.name }
+                        ) { category in
+                            category.isArchived = false
+                        }
+                    }
                 }
             }
-            .padding(20)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .category,
+                highlightedID: $highlightedCategoryID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let category = categories.first(where: { $0.id == id }) {
+                        editingCategory = category
+                    }
+                }
+            )
+            #endif
         }
-        .cfPageBackground()
     }
 
-    private func categorySection(title: String, items: [Category], tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(items) { category in
-                CFHoverRow {
-                    categoryRowContent(category, tint: tint)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
+    private func categorySection(
+        title: String,
+        items: [Category],
+        tint: Color,
+        staggerIndex: Int
+    ) -> some View {
+        CFGlassSection(title: title, staggerIndex: staggerIndex) {
+            CFGlassEnumeratedPanel(items: items) { category, _ in
+                CFGlassRowButton {
                     editingCategory = category
+                } label: {
+                    CFGlassChevronRow(
+                        systemName: category.symbolName,
+                        tint: tint,
+                        title: category.name
+                    )
                 }
+                .id(category.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedCategoryID == category.id)
+                #endif
                 .contextMenu {
                     Button {
                         editingCategory = category
@@ -109,47 +154,6 @@ struct CategoriesView: View {
             }
         }
     }
-
-    private var archivedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Arquivadas")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(archivedCategories) { category in
-                CFHoverRow {
-                    HStack(spacing: 12) {
-                        CFIconBadge(symbolName: category.symbolName, tint: CFTheme.textSecondary, size: 28)
-                        Text(category.name)
-                            .font(CFTheme.body())
-                            .foregroundStyle(CFTheme.textSecondary)
-                        Spacer()
-                        Button("Restaurar") {
-                            category.isArchived = false
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-            }
-        }
-    }
-
-    private func categoryRowContent(_ category: Category, tint: Color) -> some View {
-        HStack(spacing: 12) {
-            CFIconBadge(symbolName: category.symbolName, tint: tint, size: 30)
-            Text(category.name)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textPrimary)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CFTheme.textTertiary)
-        }
-    }
-
 }
 
 private struct CategorySheet: View {
@@ -162,12 +166,14 @@ private struct CategorySheet: View {
     @State private var name: String
     @State private var symbolName: String
     @State private var kind: CategoryKind
+    @State private var budgetAmount: Decimal
 
     init(editing: Category? = nil) {
         self.editing = editing
         _name = State(initialValue: editing?.name ?? "")
         _symbolName = State(initialValue: editing?.symbolName ?? "tag.fill")
         _kind = State(initialValue: editing?.kind ?? .expense)
+        _budgetAmount = State(initialValue: editing?.monthlyBudget ?? 0)
     }
 
     private var isEditing: Bool { editing != nil }
@@ -191,44 +197,59 @@ private struct CategorySheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Identificação") {
-                    CFInputField(
-                        label: "Nome",
-                        text: $name,
-                        placeholder: "Mercado, Delivery, Salário…"
-                    )
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassFormPanel(title: "Identificação") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Nome") {
+                                TextField("Mercado, Delivery, Salário…", text: $name)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                            }
 
-                    labeledRow("Tipo") {
-                        CFSelectField(
-                            selection: $kind,
-                            options: CategoryKind.selectOptions,
-                            disabled: hasUsage
-                        )
+                            if kind == .expense {
+                                CFGlassPanelDivider()
+                                CFGlassLabeledField(label: "Teto mensal (opcional)") {
+                                    CurrencyField(amount: $budgetAmount, placeholder: "R$ 0,00", style: .compact)
+                                }
+                                Text("Limite de gasto nesta categoria no mês. Aparece na Visão geral quando preenchido.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                    .padding(.bottom, CFGlassMetrics.rowVerticalPadding)
+                            }
+
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Tipo") {
+                                CFSelectField(
+                                    selection: $kind,
+                                    options: CategoryKind.selectOptions,
+                                    disabled: hasUsage
+                                )
+                            }
+                        }
+                    }
+
+                    if hasUsage {
+                        Text("Tipo bloqueado: há lançamentos usando essa categoria. Arquive e crie uma nova se precisar mudar.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                    }
+
+                    CFGlassFormPanel(title: "Aparência") {
+                        CFGlassLabeledField(label: "Ícone") {
+                            IconPickerField(symbolName: $symbolName, tint: accentColor)
+                        }
                     }
                 }
-
-                if hasUsage {
-                    Text("Tipo bloqueado: há lançamentos usando essa categoria. Arquive e crie uma nova se precisar mudar.")
-                        .font(CFTheme.caption())
-                        .foregroundStyle(CFTheme.textSecondary)
-                }
-
-                section(title: "Aparência") {
-                    labeledRow("Ícone") {
-                        IconPickerField(symbolName: $symbolName, tint: accentColor)
-                    }
-                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -260,30 +281,26 @@ private struct CategorySheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Arquivar", icon: "archivebox", style: .destructive) {
+                Button(role: .destructive) {
                     archive()
+                } label: {
+                    Label("Arquivar", systemImage: "archivebox")
                 }
+                .cfGlassDestructiveButton()
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-            .allowsHitTesting(!name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let finalSymbol = symbolName.isEmpty ? "tag.fill" : symbolName
+        let budget = parsedBudget()
 
         if let editing {
             editing.name = trimmedName
@@ -291,16 +308,27 @@ private struct CategorySheet: View {
             if !hasUsage {
                 editing.kind = kind
             }
+            if kind == .expense {
+                editing.monthlyBudget = budget
+            } else {
+                editing.monthlyBudget = nil
+            }
         } else {
             let nextSort = (categories.filter { $0.kind == kind }.map(\.sortOrder).max() ?? -1) + 1
             let category = Category(
                 name: trimmedName,
                 symbolName: finalSymbol,
                 kind: kind,
-                sortOrder: nextSort
+                sortOrder: nextSort,
+                monthlyBudgetMinorUnits: budget?.minorUnits
             )
             modelContext.insert(category)
         }
+    }
+
+    private func parsedBudget() -> Decimal? {
+        guard kind == .expense, budgetAmount > 0 else { return nil }
+        return budgetAmount
     }
 
     private func archive() {

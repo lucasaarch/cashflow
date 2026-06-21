@@ -99,7 +99,7 @@ private struct IconPickerGrid: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(CFTheme.surfaceElevated.opacity(0.35))
+        .cfGlassPickerSearchBar()
     }
 
     private func section(title: String, items: [IconItem]) -> some View {
@@ -127,16 +127,7 @@ private struct IconPickerGrid: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(isSelected ? tint : CFTheme.textPrimary)
                 .frame(width: 36, height: 36)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isSelected ? tint.opacity(0.22) : CFTheme.surfaceElevated.opacity(0.40))
-                        .overlay {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(tint, lineWidth: 1)
-                            }
-                        }
-                }
+                .cfGlassPickerOption(isSelected: isSelected, tint: tint)
         }
         .buttonStyle(.plain)
         .help(item.keywords.first?.capitalized ?? item.name)

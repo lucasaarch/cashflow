@@ -3,6 +3,9 @@ import SwiftData
 
 struct GoalListView: View {
     @Environment(\.modelContext) private var modelContext
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     @Query(sort: [SortDescriptor(\FinancialGoal.createdAt, order: .reverse)])
     private var goals: [FinancialGoal]
@@ -12,6 +15,10 @@ struct GoalListView: View {
 
     @State private var showingAdd = false
     @State private var editingGoal: FinancialGoal?
+    #if os(macOS)
+    @State private var highlightedGoalID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
     private var activeGoals: [FinancialGoal] {
         goals.filter { !$0.isCompleted }
@@ -30,15 +37,8 @@ struct GoalListView: View {
             }
         }
         .navigationTitle("Metas")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Nova meta", systemImage: "plus")
-                }
-                .help("Cadastrar meta de longo prazo")
-            }
+        .detailToolbarAdd(help: "Cadastrar meta de longo prazo") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AddGoalSheet()
@@ -46,7 +46,7 @@ struct GoalListView: View {
         .sheet(item: $editingGoal) { goal in
             AddGoalSheet(editing: goal)
         }
-        .cfPageBackground()
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -61,35 +61,63 @@ struct GoalListView: View {
     }
 
     private var content: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                if !activeGoals.isEmpty {
-                    section(title: "Em andamento", goals: activeGoals)
-                }
-                if !completedGoals.isEmpty {
-                    section(title: "Concluídas", goals: completedGoals, dimmed: true)
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    if !activeGoals.isEmpty {
+                        goalsSection(
+                            title: "Em andamento",
+                            goals: activeGoals,
+                            staggerIndex: 0
+                        )
+                    }
+
+                    if !completedGoals.isEmpty {
+                        goalsSection(
+                            title: "Concluídas",
+                            goals: completedGoals,
+                            dimmed: true,
+                            staggerIndex: activeGoals.isEmpty ? 0 : 1
+                        )
+                    }
                 }
             }
-            .padding(20)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .goal,
+                highlightedID: $highlightedGoalID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let goal = goals.first(where: { $0.id == id }) {
+                        editingGoal = goal
+                    }
+                }
+            )
+            #endif
         }
     }
 
-    private func section(title: String, goals: [FinancialGoal], dimmed: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(goals) { goal in
+    private func goalsSection(
+        title: String,
+        goals: [FinancialGoal],
+        dimmed: Bool = false,
+        staggerIndex: Int
+    ) -> some View {
+        CFGlassSection(title: title, staggerIndex: staggerIndex) {
+            CFGlassEnumeratedPanel(items: goals, dividerStyle: .fullWidth) { goal, _ in
                 let snapshot = GoalProgressCalculator.snapshot(for: goal, transactions: transactions)
-                CFHoverRow {
+                CFGlassRowButton {
+                    editingGoal = goal
+                } label: {
                     GoalProgressCard(snapshot: snapshot, goal: goal)
                 }
+                .id(goal.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedGoalID == goal.id)
+                #endif
                 .opacity(dimmed ? 0.75 : 1)
-                .contentShape(Rectangle())
-                .onTapGesture { editingGoal = goal }
                 .contextMenu {
                     if !goal.isCompleted {
                         Button {

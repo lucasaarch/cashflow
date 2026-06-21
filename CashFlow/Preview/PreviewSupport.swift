@@ -7,7 +7,9 @@ import SwiftUI
 enum PreviewData {
     static let aiService = AIService()
     static let chatPanelState = AIChatPanelState()
-    static let privacyMode = PrivacyMode()
+    static let sidebarNavigation = SidebarNavigationState()
+    static let spotlightState = SpotlightPresentationState()
+    static let spotlightNavigation = SpotlightNavigationState()
 
     static let container: ModelContainer = {
         let schema = Schema([
@@ -21,7 +23,10 @@ enum PreviewData {
             FinancialGoal.self,
             WishlistItem.self,
             ChatConversation.self,
-            ChatMessage.self
+            ChatMessage.self,
+            ChatToolActivity.self,
+            AIWriteActionLogEntry.self,
+            AIPendingWriteProposal.self
         ])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(for: schema, configurations: [configuration])
@@ -161,14 +166,15 @@ extension View {
         modelContainer(PreviewData.container)
             .environmentObject(PreviewData.aiService)
             .environmentObject(PreviewData.chatPanelState)
-            .environmentObject(PreviewData.privacyMode)
+            .environmentObject(PreviewData.sidebarNavigation)
+            .environmentObject(PreviewData.spotlightState)
+            .environmentObject(PreviewData.spotlightNavigation)
             .frame(width: width, height: height)
     }
 
     func previewSheet(width: CGFloat, height: CGFloat) -> some View {
         modelContainer(PreviewData.container)
             .environmentObject(PreviewData.aiService)
-            .environmentObject(PreviewData.privacyMode)
             .frame(width: width, height: height)
     }
 }

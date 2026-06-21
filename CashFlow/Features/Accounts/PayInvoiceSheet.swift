@@ -46,17 +46,12 @@ struct PayInvoiceSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(title: "Valor do pagamento", amount: $amount)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
         }
         .cfAdaptiveSheetNavigation()
-        .cfAdaptiveSheetFrame(width: 480, height: 420)
+        .cfAdaptiveSheetFrame(width: 480, height: 460)
         .cfCompactSheetToolbar(
             title: "Pagar fatura",
             saveDisabled: !isValid,
@@ -64,33 +59,35 @@ struct PayInvoiceSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
         .onAppear(perform: prefillDefaults)
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Origem") {
-                    labeledRow("Conta") {
-                        bankPicker
-                    }
-                    labeledRow("Categoria") {
-                        categoryPicker
-                    }
-                    labeledRow("Data") {
-                        DateField(date: $paymentDate)
-                    }
-                }
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(title: "Valor do pagamento", amount: $amount)
 
-                Text("Será registrada uma saída na conta bancária e uma entrada no cartão \(card.name).")
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
+                    CFGlassFormPanel(title: "Origem") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Conta") { bankPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Categoria") { categoryPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Data") {
+                                DateField(date: $paymentDate)
+                            }
+                        }
+                    }
+
+                    Text("Será registrada uma saída na conta bancária e uma entrada no cartão \(card.name).")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -127,47 +124,13 @@ struct PayInvoiceSheet: View {
         )
     }
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-            content()
-        }
-    }
-
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textSecondary)
-            Spacer(minLength: 8)
-            content()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
-    }
-
     private var footer: some View {
-        HStack(spacing: 10) {
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Confirmar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        CFGlassSheetFooter(
+            confirmTitle: "Confirmar",
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        )
     }
 
     private func prefillDefaults() {

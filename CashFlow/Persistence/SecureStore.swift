@@ -5,6 +5,7 @@ enum SecureStore {
     enum Key: String {
         case openAIAPIKey = "com.cashflow.ai.openai.apiKey"
         case anthropicAPIKey = "com.cashflow.ai.anthropic.apiKey"
+        case openAICompatibleAPIKey = "com.cashflow.ai.openaiCompatible.apiKey"
     }
 
     #if DEBUG
@@ -92,6 +93,64 @@ enum SecureStore {
         return "••••••••" + String(value.suffix(4))
     }
 
+    nonisolated static func saveCustomProviderAPIKey(_ value: String, providerID: UUID) throws {
+        try save(value, account: customProviderAccount(providerID))
+    }
+
+    nonisolated static func readCustomProviderAPIKey(_ providerID: UUID) -> String? {
+        read(account: customProviderAccount(providerID))
+    }
+
+    nonisolated static func deleteCustomProviderAPIKey(_ providerID: UUID) {
+        delete(account: customProviderAccount(providerID))
+    }
+
+    nonisolated static func maskedCustomProviderAPIKey(_ providerID: UUID) -> String? {
+        maskedValue(account: customProviderAccount(providerID))
+    }
+
+    nonisolated static func save(_ value: String, account: String) throws {
+        let data = Data(value.utf8)
+        let query = baseQuery(account: account)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+
+        if updateStatus == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            guard addStatus == errSecSuccess else {
+                throw AIError.providerError("Falha ao salvar credencial (\(addStatus)).")
+            }
+            return
+        }
+
+        throw AIError.providerError("Falha ao salvar credencial (\(updateStatus)).")
+    }
+
+    nonisolated static func read(account: String) -> String? {
+        readData(matching: readQuery(account: account))
+    }
+
+    nonisolated static func delete(account: String) {
+        SecItemDelete(baseQuery(account: account) as CFDictionary)
+    }
+
+    nonisolated static func maskedValue(account: String) -> String? {
+        guard let value = read(account: account), !value.isEmpty else { return nil }
+        return "••••••••" + String(value.suffix(4))
+    }
+
+    nonisolated private static func customProviderAccount(_ providerID: UUID) -> String {
+        "com.cashflow.ai.customProvider.\(providerID.uuidString)"
+    }
+
     // MARK: - Keychain queries
 
     nonisolated private static func accessGroup() -> String? {
@@ -102,10 +161,14 @@ enum SecureStore {
     }
 
     nonisolated private static func baseQuery(for key: Key) -> [String: Any] {
+        baseQuery(account: key.rawValue)
+    }
+
+    nonisolated private static func baseQuery(account: String) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key.rawValue
+            kSecAttrAccount as String: account
         ]
         if let accessGroup = accessGroup() {
             query[kSecAttrAccessGroup as String] = accessGroup
@@ -114,7 +177,11 @@ enum SecureStore {
     }
 
     nonisolated private static func readQuery(for key: Key) -> [String: Any] {
-        var query = baseQuery(for: key)
+        readQuery(account: key.rawValue)
+    }
+
+    nonisolated private static func readQuery(account: String) -> [String: Any] {
+        var query = baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return query

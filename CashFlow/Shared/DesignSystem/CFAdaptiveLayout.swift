@@ -166,6 +166,7 @@ private struct CFCompactSheetToolbarModifier: ViewModifier {
                             .disabled(saveDisabled)
                     }
                 }
+                .cfTransparentToolbar()
         } else {
             content
         }
@@ -209,7 +210,8 @@ private struct CFAdaptivePickerModifier<PickerContent: View>: ViewModifier {
             content
                 .popover(isPresented: $isPresented, arrowEdge: arrowEdge) {
                     pickerContent()
-                        .presentationBackground(CFTheme.surfacePrimary)
+                        .background { CFGlassGradientBackground() }
+                        .presentationBackground { CFGlassGradientBackground() }
                 }
         } else {
             content
@@ -218,6 +220,7 @@ private struct CFAdaptivePickerModifier<PickerContent: View>: ViewModifier {
                         ScrollView {
                             pickerContent()
                         }
+                        .background { CFGlassGradientBackground() }
                         .navigationTitle(sheetTitle)
                         #if os(iOS)
                         .navigationBarTitleDisplayMode(.inline)
@@ -227,10 +230,11 @@ private struct CFAdaptivePickerModifier<PickerContent: View>: ViewModifier {
                                 Button("Fechar") { isPresented = false }
                             }
                         }
+                        .cfTransparentToolbar()
                     }
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                    .presentationBackground(CFTheme.surfacePrimary)
+                    .presentationBackground { CFGlassGradientBackground() }
                 }
         }
     }

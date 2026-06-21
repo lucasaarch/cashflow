@@ -12,6 +12,7 @@ struct FinancialAIContextInput {
     var calendar: Calendar = .current
     var now: Date = .now
     var previousMonthExpense: Decimal?
+    var spendingHistory: SpendingHistoryContext?
 }
 
 enum AIContextBuilder {
@@ -56,6 +57,7 @@ enum AIContextBuilder {
         recurringExpenses: [RecurringExpense],
         recurringIncomes: [RecurringIncome],
         previousMonthExpense: Decimal,
+        spendingHistory: SpendingHistoryContext? = nil,
         calendar: Calendar = .current,
         now: Date = .now
     ) -> String {
@@ -70,7 +72,8 @@ enum AIContextBuilder {
             recurringIncomes: recurringIncomes,
             calendar: calendar,
             now: now,
-            previousMonthExpense: previousMonthExpense
+            previousMonthExpense: previousMonthExpense,
+            spendingHistory: spendingHistory
         )
         return buildFullSnapshot(input, includeRecentHistory: false)
     }
@@ -101,6 +104,7 @@ enum AIContextBuilder {
         sections.append(patrimonySection(overview))
         sections.append(accountBalancesSection(input))
         sections.append(monthFlowSection(summary, previousMonthExpense: input.previousMonthExpense))
+        sections.append(spendingHistorySection(input.spendingHistory))
         sections.append(categoriesSection(summary))
         sections.append(accountExpensesSection(summary))
         sections.append(pendingBillsSection(input))
@@ -229,6 +233,21 @@ enum AIContextBuilder {
         if let previousMonthExpense {
             lines.append("- Despesas mês anterior: \(previousMonthExpense.brl)")
         }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func spendingHistorySection(_ history: SpendingHistoryContext?) -> String {
+        guard let history, history.sampleCount >= 2 else { return "" }
+        var lines = ["=== HISTÓRICO DE GASTOS ===", ""]
+        lines.append("- Média mensal (últimos \(history.sampleCount) meses): \(history.averageMonthlyExpense?.brl ?? "—")")
+        lines.append("- Gasto realizado neste mês: \(history.currentExpense.brl)")
+        if let typical = history.typicalExpenseAtCurrentProgress {
+            lines.append("- Gasto típico até este ponto do mês: \(typical.brl)")
+        }
+        if let projected = history.projectedMonthExpense {
+            lines.append("- Projeção de gasto no fim do mês: \(projected.brl)")
+        }
+        lines.append("- Tendência vs. histórico: \(history.progressTrend.label)")
         return lines.joined(separator: "\n")
     }
 

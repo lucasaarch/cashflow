@@ -15,6 +15,7 @@ final class Category {
     var sortOrder: Int
     var isArchived: Bool
     var seeded: Bool
+    var monthlyBudgetMinorUnits: Int64?
 
     @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
     var transactions: [Transaction] = []
@@ -40,7 +41,8 @@ final class Category {
         kind: CategoryKind,
         sortOrder: Int,
         isArchived: Bool = false,
-        seeded: Bool = false
+        seeded: Bool = false,
+        monthlyBudgetMinorUnits: Int64? = nil
     ) {
         self.id = id
         self.name = name
@@ -49,5 +51,20 @@ final class Category {
         self.sortOrder = sortOrder
         self.isArchived = isArchived
         self.seeded = seeded
+        self.monthlyBudgetMinorUnits = monthlyBudgetMinorUnits
+    }
+
+    var monthlyBudget: Decimal? {
+        get {
+            guard let monthlyBudgetMinorUnits else { return nil }
+            return Decimal(monthlyBudgetMinorUnits) / 100
+        }
+        set {
+            if let newValue {
+                monthlyBudgetMinorUnits = newValue.minorUnits
+            } else {
+                monthlyBudgetMinorUnits = nil
+            }
+        }
     }
 }

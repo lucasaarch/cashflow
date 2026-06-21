@@ -24,7 +24,9 @@ struct DashboardWishlistPanel: View {
     @State private var insightText: String?
     @State private var insightLoading = false
     @State private var insightError: String?
+    @State private var insightCachedAt: Date?
     @State private var insightIsFresh = false
+    @State private var autoRefreshTask: Task<Void, Never>?
 
     private var monthKey: String {
         AIInsightsService.monthKey(for: referenceDate)
@@ -37,14 +39,6 @@ struct DashboardWishlistPanel: View {
     private var displayInsight: String? {
         if let insightText { return insightText }
         return AIWishlistInsightService.cachedInsight(monthKey: monthKey)
-    }
-
-    private var totalEstimated: Decimal {
-        wishlistItems.reduce(0) { $0 + $1.estimatedAmount }
-    }
-
-    private var sortedItems: [WishlistItem] {
-        WishlistSortOrder.sorted(wishlistItems)
     }
 
     var body: some View {
@@ -60,10 +54,6 @@ struct DashboardWishlistPanel: View {
             VStack(alignment: .leading, spacing: 14) {
                 panelHeader
 
-                WishlistSummaryHeader(totalEstimated: totalEstimated, items: wishlistItems)
-
-                itemsList
-
                 if aiService.configuration.isReady || hasCachedInsight {
                     gioSection
                     if let insightError {
@@ -75,26 +65,34 @@ struct DashboardWishlistPanel: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .cfAIGlow(active: insightLoading || insightIsFresh)
         .animation(reduceMotion ? nil : CFMotion.gentle, value: insightIsFresh)
-        .onAppear(perform: loadCachedInsight)
-        .onChange(of: referenceDate) { _, _ in loadCachedInsight() }
-        .onChange(of: wishlistItems.count) { _, _ in loadCachedInsight() }
-        .onChange(of: aiService.configuration.isReady) { _, _ in loadCachedInsight() }
+        .onAppear(perform: loadCachedInsightDeferred)
+        .onChange(of: referenceDate) { _, _ in loadCachedInsightDeferred() }
+        .onChange(of: wishlistItems.count) { _, _ in loadCachedInsightDeferred() }
+        .onChange(of: aiService.configuration.isReady) { _, _ in loadCachedInsightDeferred() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { loadCachedInsight() }
+            if phase == .active { loadCachedInsightDeferred() }
+        }
+        .onDisappear {
+            autoRefreshTask?.cancel()
+            autoRefreshTask = nil
         }
     }
 
     private var panelHeader: some View {
         HStack(spacing: 6) {
-            Image(systemName: "cart.fill")
+            Image(systemName: "bag.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(CFTheme.accent)
-            Text("Lista de desejos")
+            Text("Recomendações de compra")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CFTheme.textPrimary)
             Spacer(minLength: 0)
+            if let chip = freshnessChip {
+                Text(chip)
+                    .font(CFTheme.dashboardMeta())
+                    .foregroundStyle(CFTheme.textSecondary)
+            }
             if displayInsight != nil, !insightLoading, aiService.configuration.isReady {
                 Button {
                     Task { await generateInsight(force: true) }
@@ -111,43 +109,15 @@ struct DashboardWishlistPanel: View {
         }
     }
 
-    private var itemsList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(sortedItems) { item in
-                CFHoverRow {
-                    WishlistItemRow(
-                        item: item,
-                        iconSize: 30,
-                        nameFont: CFTheme.body(),
-                        amountFont: CFTheme.kpiValue()
-                    )
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private var gioSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Sugestão da \(AIAssistantIdentity.name)")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-
             if insightLoading {
-                CFThinkingDots()
+                CFThinkingDots(style: .panel)
                     .padding(.vertical, 4)
             } else if let displayInsight, !displayInsight.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    if insightIsFresh {
-                        CFTypewriter(text: displayInsight, markdown: true, animated: true)
-                            .font(CFTheme.caption())
-                            .foregroundStyle(CFTheme.textSecondary)
-                            .lineSpacing(3)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        CFMarkdownText(text: displayInsight, lineSpacing: 3)
-                    }
+                    CFMarkdownText(text: displayInsight, lineSpacing: 3)
 
                     if aiService.configuration.isReady {
                         CFPillButton(title: "Conversar sobre isso", icon: "bubble.left.and.text.bubble.right", style: .ghost) {
@@ -165,10 +135,43 @@ struct DashboardWishlistPanel: View {
         .padding(.top, 4)
     }
 
+    private var freshnessChip: String? {
+        guard displayInsight != nil else { return nil }
+        return AIInsightCache.freshnessLabel(cachedAt: insightCachedAt)
+    }
+
+    private func loadCachedInsightDeferred() {
+        Task { @MainActor in
+            loadCachedInsight()
+            scheduleAutoRefreshIfNeeded()
+        }
+    }
+
     private func loadCachedInsight() {
         insightText = AIWishlistInsightService.cachedInsight(monthKey: monthKey)
+        insightCachedAt = AIWishlistInsightService.cachedInsightDate(monthKey: monthKey)
         insightError = nil
         insightIsFresh = false
+    }
+
+    private func scheduleAutoRefreshIfNeeded() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = Task { @MainActor in
+            await refreshIfNeeded()
+        }
+    }
+
+    private func refreshIfNeeded() async {
+        guard !wishlistItems.isEmpty else { return }
+        guard aiService.configuration.isReady else { return }
+        guard !insightLoading else { return }
+        guard !Task.isCancelled else { return }
+
+        if insightText == nil {
+            await generateInsight(force: false)
+        } else if AIInsightCache.isStale(cachedAt: insightCachedAt) {
+            await generateInsight(force: true)
+        }
     }
 
     private func generateInsight(force: Bool) async {
@@ -197,6 +200,7 @@ struct DashboardWishlistPanel: View {
             )
             AIWishlistInsightService.cacheInsight(text, monthKey: monthKey)
             insightText = AIWishlistInsightService.cachedInsight(monthKey: monthKey)
+            insightCachedAt = AIWishlistInsightService.cachedInsightDate(monthKey: monthKey)
             insightIsFresh = true
             Task {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)

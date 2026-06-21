@@ -6,7 +6,10 @@ import SwiftUI
 struct CFTypewriter: View {
     let text: String
     var markdown: Bool = false
+    var markdownCompact: Bool = false
     var animated: Bool = true
+    /// When true, text may grow over time (streaming). Reveal catches up without restarting.
+    var streaming: Bool = false
     var charactersPerSecond: Double = 110
     var onProgress: ((Int) -> Void)? = nil
     var onComplete: (() -> Void)? = nil
@@ -21,15 +24,24 @@ struct CFTypewriter: View {
             if shouldAnimate && !isComplete {
                 Text(animatedContent)
             } else if markdown {
-                CFMarkdownText(text: text)
+                CFMarkdownText(text: text, compact: markdownCompact)
             } else {
                 Text(text)
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .task(id: text) { await runReveal() }
-        .task(id: text) { await runCaret() }
+        .task(id: streaming ? "streaming" : text) {
+            if streaming {
+                await runStreamingReveal()
+            } else {
+                await runReveal()
+            }
+        }
+        .task {
+            guard shouldAnimate else { return }
+            await runCaret()
+        }
     }
 
     private var shouldAnimate: Bool { animated && !reduceMotion }
@@ -70,6 +82,31 @@ struct CFTypewriter: View {
         }
         isComplete = true
         onComplete?()
+    }
+
+    private func runStreamingReveal() async {
+        guard shouldAnimate else {
+            revealedCount = plainText.count
+            isComplete = true
+            onProgress?(revealedCount)
+            onComplete?()
+            return
+        }
+        isComplete = false
+        let tick = max(UInt64(1_000_000_000 / charactersPerSecond), 1)
+        while !Task.isCancelled {
+            let total = plainText.count
+            if revealedCount < total {
+                try? await Task.sleep(nanoseconds: tick)
+                if Task.isCancelled { return }
+                revealedCount = min(revealedCount + 1, total)
+                if revealedCount.isMultiple(of: 8) || revealedCount == total {
+                    onProgress?(revealedCount)
+                }
+            } else {
+                try? await Task.sleep(nanoseconds: tick * 2)
+            }
+        }
     }
 
     private func runCaret() async {

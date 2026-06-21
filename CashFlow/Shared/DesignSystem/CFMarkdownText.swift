@@ -6,8 +6,13 @@ import SwiftUI
 /// Fenced code blocks and tables fall back to plain paragraphs.
 struct CFMarkdownText: View {
     let text: String
+    var compact: Bool = false
     var paragraphSpacing: CGFloat = 10
     var lineSpacing: CGFloat = 4
+
+    private var baseFont: Font {
+        compact ? CFTheme.chatBody() : CFTheme.body()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: paragraphSpacing) {
@@ -84,7 +89,7 @@ struct CFMarkdownText: View {
         switch block.kind {
         case .paragraph:
             Text(inlineMarkdown(block.content))
-                .font(CFTheme.body())
+                .font(baseFont)
                 .foregroundStyle(CFTheme.textPrimary)
                 .lineSpacing(lineSpacing)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -93,10 +98,10 @@ struct CFMarkdownText: View {
         case .bullet:
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("•")
-                    .font(CFTheme.body().weight(.semibold))
+                    .font(baseFont.weight(.semibold))
                     .foregroundStyle(CFTheme.accent)
                 Text(inlineMarkdown(block.content))
-                    .font(CFTheme.body())
+                    .font(baseFont)
                     .foregroundStyle(CFTheme.textPrimary)
                     .lineSpacing(lineSpacing)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -107,11 +112,11 @@ struct CFMarkdownText: View {
         case .numbered(let label):
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("\(label).")
-                    .font(CFTheme.body().weight(.semibold))
+                    .font(baseFont.weight(.semibold))
                     .foregroundStyle(CFTheme.accent)
                     .monospacedDigit()
                 Text(inlineMarkdown(block.content))
-                    .font(CFTheme.body())
+                    .font(baseFont)
                     .foregroundStyle(CFTheme.textPrimary)
                     .lineSpacing(lineSpacing)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -141,6 +146,14 @@ struct CFMarkdownText: View {
     }
 
     private func headingFont(_ level: Int) -> Font {
+        if compact {
+            switch level {
+            case 1: return .system(size: 15, weight: .semibold)
+            case 2: return .system(size: 14, weight: .semibold)
+            case 3: return .system(size: 13, weight: .semibold)
+            default: return .system(size: 13, weight: .semibold)
+            }
+        }
         switch level {
         case 1: return .system(size: 22, weight: .bold)
         case 2: return .system(size: 19, weight: .semibold)

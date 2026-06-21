@@ -4,10 +4,14 @@ import SwiftData
 struct RootSidebarView: View {
     @Query private var allBills: [Bill]
     @Query private var allReceivables: [Receivable]
+    @EnvironmentObject private var sidebarNavigation: SidebarNavigationState
+    #if os(macOS)
+    @EnvironmentObject private var spotlightState: SpotlightPresentationState
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     var pinSidebar: Bool
 
-    @State private var selection: SidebarDestination? = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     init(pinSidebar: Bool = true) {
@@ -88,7 +92,7 @@ struct RootSidebarView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(selection: $selection) {
+            List(selection: sidebarSelection) {
                 Section("Visão") {
                     Label("Visão geral", systemImage: "chart.pie.fill")
                         .tag(SidebarDestination.dashboard)
@@ -119,7 +123,7 @@ struct RootSidebarView: View {
                 }
 
                 Section("Inteligência") {
-                    Label("Inteligência", systemImage: "sparkles")
+                    Label("Inteligência", systemImage: AIAssistantIdentity.settingsSymbolName)
                         .tag(SidebarDestination.intelligence)
                 }
             }
@@ -128,18 +132,34 @@ struct RootSidebarView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
             .toolbar(removing: .sidebarToggle)
         } detail: {
-            SidebarDetailView(destination: selection)
+            SidebarDetailView(destination: sidebarNavigation.selection)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                #if os(macOS)
+                .environmentObject(spotlightState)
+                .environmentObject(spotlightNavigation)
+                #endif
                 .aiChatPresentation()
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: columnVisibility) { _, newValue in
-            if pinSidebar, newValue != .all {
+            guard pinSidebar, newValue != .all else { return }
+            Task { @MainActor in
                 columnVisibility = .all
             }
         }
 #if os(macOS)
         .removeSidebarToggleButton()
 #endif
+    }
+
+    private var sidebarSelection: Binding<SidebarDestination?> {
+        Binding(
+            get: { sidebarNavigation.selection },
+            set: { newValue in
+                Task { @MainActor in
+                    sidebarNavigation.selection = newValue
+                }
+            }
+        )
     }
 }

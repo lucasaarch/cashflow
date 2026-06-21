@@ -4,7 +4,6 @@ import SwiftData
 struct AddGoalSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -78,8 +77,6 @@ struct AddGoalSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -93,68 +90,64 @@ struct AddGoalSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
-    }
-
-    private var header: some View {
-        VStack(spacing: 14) {
-            CFAmountHeader(title: "Valor da meta", amount: $targetAmount)
-            CFInputField(label: "Nome da meta", text: $name, placeholder: "Reserva, Viagem, Aposentadoria…")
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 16)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                sectionHeader("Aparência")
-                formGroup {
-                    HStack(spacing: 12) {
-                        appearanceField(title: "Ícone") {
-                            IconPickerField(symbolName: $symbolName, tint: Color(hex: colorHex))
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassPanel(glass: .regular.tint(CFTheme.accent.opacity(0.06))) {
+                        VStack(spacing: 14) {
+                            CFAmountHeader(title: "Valor da meta", amount: $targetAmount)
+                            CFInputField(label: "Nome da meta", text: $name, placeholder: "Reserva, Viagem, Aposentadoria…")
                         }
-                        appearanceField(title: "Cor") {
-                            ColorPickerField(color: Binding(
-                                get: { Color(hex: colorHex) },
-                                set: { colorHex = $0.hexString }
-                            ))
-                        }
+                        .padding(18)
                     }
-                    .padding(12)
-                }
 
-                sectionHeader("Prazo")
-                formGroup {
-                    toggleRow("Definir data limite", isOn: $hasDeadline)
-                    if hasDeadline {
-                        formDivider
-                        inlineField("Concluir até") {
-                            DateField(date: $deadline)
+                    CFGlassFormPanel(title: "Aparência") {
+                        HStack(spacing: 12) {
+                            appearanceField(title: "Ícone") {
+                                IconPickerField(symbolName: $symbolName, tint: Color(hex: colorHex))
+                            }
+                            appearanceField(title: "Cor") {
+                                ColorPickerField(colorHex: $colorHex)
+                            }
                         }
-                    }
-                }
-
-                sectionHeader("De onde vem o dinheiro")
-                if !isEditing {
-                    dedicatedAccountSection
-                }
-                linkedAccountsSection
-
-                sectionHeader("Nota")
-                formGroup {
-                    TextField("Opcional — motivação, lembrete…", text: $notes, axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.plain)
-                        .font(CFTheme.body())
                         .padding(12)
+                    }
+
+                    CFGlassFormPanel(title: "Prazo") {
+                        VStack(spacing: 0) {
+                            toggleRow("Definir data limite", isOn: $hasDeadline)
+                            if hasDeadline {
+                                CFGlassPanelDivider()
+                                inlineField("Concluir até") {
+                                    DateField(date: $deadline)
+                                }
+                            }
+                        }
+                    }
+
+                    CFGlassSection(title: "De onde vem o dinheiro") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !isEditing {
+                                dedicatedAccountSection
+                            }
+                            linkedAccountsSection
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Nota") {
+                        TextField("Opcional — motivação, lembrete…", text: $notes, axis: .vertical)
+                            .lineLimit(2...4)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                            .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
+                    }
                 }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 20)
         }
         .scrollIndicators(.never)
     }
@@ -204,7 +197,7 @@ struct AddGoalSheet: View {
                             .font(CFTheme.caption())
                             .foregroundStyle(CFTheme.textSecondary)
                         Spacer()
-                        Text(linkedBalancePreview.brl(masked: privacy.valuesHidden))
+                        Text(linkedBalancePreview.brl)
                             .font(.callout.weight(.semibold).monospacedDigit())
                             .foregroundStyle(CFTheme.accent)
                     }
@@ -242,7 +235,7 @@ struct AddGoalSheet: View {
                         Text("·")
                             .font(.caption2)
                             .foregroundStyle(CFTheme.textTertiary)
-                        Text(balance.brl(masked: privacy.valuesHidden))
+                        Text(balance.brl)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(CFTheme.textSecondary)
                     }
@@ -317,26 +310,21 @@ struct AddGoalSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
+                Button(role: .destructive) {
                     if let editing { modelContext.delete(editing) }
                     dismiss()
+                } label: {
+                    Label("Excluir", systemImage: "trash")
                 }
+                .cfGlassDestructiveButton()
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func save() {

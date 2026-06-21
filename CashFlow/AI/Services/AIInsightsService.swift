@@ -16,7 +16,9 @@ enum InsightsPrompts {
     - Nunca diga que o mês tá "favorável" só porque o esperado é maior que o gasto — verifique se o realizado já cobre o que foi gasto.
     - Se o saldo realizado é negativo (gastou mais do que entrou até agora) mesmo com renda esperada alta, isso é um alerta de fluxo de caixa, não folga.
 
-    Use os dados de patrimônio, fluxo do mês (realizado e previsto), ritmo, metas e contas a pagar/receber quando relevante.
+    Use os dados de patrimônio, fluxo do mês (realizado e previsto), ritmo, histórico de gastos, metas e contas a pagar/receber quando relevante.
+    Compare os gastos atuais com a média dos meses anteriores quando o histórico estiver disponível — diga se a pessoa está gastando acima ou abaixo do habitual, sem pedir uma meta fixa.
+    Escreva só em português natural — nunca cite nomes de campos técnicos ou em inglês do JSON (ex.: spent_ratio, pending_receivable, desired_by).
     """
 }
 
@@ -68,6 +70,12 @@ enum AIInsightsService {
         modelContext: ModelContext,
         aiService: AIService
     ) async throws -> String {
+        let spendingHistory = SpendingHistoryContext.analyze(
+            referenceDate: summary.referenceDate,
+            transactions: transactions,
+            calendar: Calendar.current,
+            now: summary.referenceDate
+        )
         let context: String
         if aiService.activeProviderSupportsTools {
             let toolContext = AIToolContext(
@@ -95,7 +103,8 @@ enum AIInsightsService {
                 transactions: transactions,
                 recurringExpenses: recurringExpenses,
                 recurringIncomes: recurringIncomes,
-                previousMonthExpense: previousMonthExpense
+                previousMonthExpense: previousMonthExpense,
+                spendingHistory: spendingHistory
             )
         }
 

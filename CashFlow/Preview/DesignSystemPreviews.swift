@@ -8,7 +8,7 @@ import SwiftUI
     @Previewable @State var date = Date.now
     @Previewable @State var closingDay = 5
     @Previewable @State var kind = TransactionKind.expense
-    @Previewable @State var color = Color(hex: "#8B5CF6")
+    @Previewable @State var colorHex = "#8B5CF6"
     @Previewable @State var symbol = "cart.fill"
     @Previewable @State var categoryKind = CategoryKind.expense
     @Previewable @Namespace var previewNamespace
@@ -51,7 +51,7 @@ import SwiftUI
                     TransactionKindSwitcher(kind: $kind, namespace: previewNamespace)
                         .frame(maxWidth: 260)
                     IconPickerField(symbolName: $symbol, tint: CFTheme.expense)
-                    ColorPickerField(color: $color)
+                    ColorPickerField(colorHex: $colorHex)
                 }
             }
 
@@ -98,7 +98,7 @@ import SwiftUI
     @Previewable @State var date = Date.now
     @Previewable @State var closingDay = 5
     @Previewable @State var kind = TransactionKind.expense
-    @Previewable @State var color = Color(hex: "#8B5CF6")
+    @Previewable @State var colorHex = "#8B5CF6"
     @Previewable @State var symbol = "cart.fill"
     @Previewable @State var categoryKind = CategoryKind.expense
     @Previewable @Namespace var previewNamespace

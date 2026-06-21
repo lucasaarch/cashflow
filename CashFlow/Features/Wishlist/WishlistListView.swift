@@ -3,23 +3,22 @@ import SwiftData
 
 struct WishlistListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var privacy: PrivacyMode
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     @Query private var items: [WishlistItem]
 
     @State private var showingAdd = false
     @State private var editingItem: WishlistItem?
     @State private var purchasingItem: WishlistItem?
-    @State private var searchText = ""
+    #if os(macOS)
+    @State private var highlightedItemID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
     private var sortedItems: [WishlistItem] {
         WishlistSortOrder.sorted(items)
-    }
-
-    private var filteredItems: [WishlistItem] {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return sortedItems }
-        return sortedItems.filter { $0.name.lowercased().contains(query) }
     }
 
     private var totalEstimated: Decimal {
@@ -35,16 +34,8 @@ struct WishlistListView: View {
             }
         }
         .navigationTitle("Lista de desejos")
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Buscar por nome")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Novo desejo", systemImage: "plus")
-                }
-                .help("Cadastrar item na lista de desejos")
-            }
+        .detailToolbarAdd(help: "Cadastrar item na lista de desejos") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AddWishlistItemSheet()
@@ -55,7 +46,7 @@ struct WishlistListView: View {
         .sheet(item: $purchasingItem) { item in
             PurchaseWishlistItemSheet(item: item)
         }
-        .cfPageBackground()
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -70,50 +61,64 @@ struct WishlistListView: View {
     }
 
     private var content: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                WishlistSummaryHeader(totalEstimated: totalEstimated, items: items)
-
-                itemsSection
-            }
-            .padding(20)
-        }
-    }
-
-    private var itemsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Itens")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(filteredItems) { item in
-                CFHoverRow {
-                    WishlistItemRow(item: item)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    editingItem = item
-                }
-                .contextMenu {
-                    Button {
-                        purchasingItem = item
-                    } label: {
-                        Label("Comprei", systemImage: "checkmark.circle")
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    CFGlassSummaryPanel(title: "Total estimado", staggerIndex: 0) {
+                        WishlistSummaryHeader(totalEstimated: totalEstimated, items: items)
                     }
-                    Button {
+
+                    CFGlassSection(
+                        title: "Itens",
+                        count: sortedItems.count,
+                        countTint: CFTheme.accent,
+                        staggerIndex: 1
+                    ) {
+                        CFGlassEnumeratedPanel(items: sortedItems) { item, _ in
+                            CFGlassRowButton {
+                                editingItem = item
+                            } label: {
+                                WishlistItemRow(item: item)
+                            }
+                            .id(item.id)
+                            #if os(macOS)
+                            .spotlightFocused(highlightedItemID == item.id)
+                            #endif
+                            .contextMenu {
+                                Button {
+                                    purchasingItem = item
+                                } label: {
+                                    Label("Comprei", systemImage: "checkmark.circle")
+                                }
+                                Button {
+                                    editingItem = item
+                                } label: {
+                                    Label("Editar", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    modelContext.delete(item)
+                                } label: {
+                                    Label("Excluir", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .wishlistItem,
+                highlightedID: $highlightedItemID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let item = items.first(where: { $0.id == id }) {
                         editingItem = item
-                    } label: {
-                        Label("Editar", systemImage: "pencil")
-                    }
-                    Button(role: .destructive) {
-                        modelContext.delete(item)
-                    } label: {
-                        Label("Excluir", systemImage: "trash")
                     }
                 }
-            }
+            )
+            #endif
         }
     }
 }

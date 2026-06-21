@@ -68,15 +68,8 @@ struct DateField: View {
                 .font(.callout.weight(.medium))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isSelected ? CFTheme.accent.opacity(0.18) : CFTheme.textTertiary.opacity(0.08))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(isSelected ? CFTheme.accent.opacity(0.35) : .clear, lineWidth: 1)
-                )
                 .foregroundStyle(isSelected ? CFTheme.accent : CFTheme.textPrimary)
+                .cfGlassPickerOption(isSelected: isSelected)
         }
         .buttonStyle(.plain)
     }
@@ -126,6 +119,10 @@ private struct CFMonthCalendar: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(CFTheme.textSecondary)
+            .background {
+                Circle()
+                    .fill(CFTheme.surfaceElevated.opacity(0.38))
+            }
 
             Spacer()
 
@@ -142,12 +139,16 @@ private struct CFMonthCalendar: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(CFTheme.textSecondary)
+            .background {
+                Circle()
+                    .fill(CFTheme.surfaceElevated.opacity(0.38))
+            }
         }
     }
 
     private var weekdayHeader: some View {
         LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(orderedWeekdaySymbols, id: \.self) { symbol in
+            ForEach(Array(orderedWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(CFTheme.textTertiary)

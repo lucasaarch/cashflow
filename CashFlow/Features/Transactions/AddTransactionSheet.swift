@@ -42,8 +42,6 @@ struct AddTransactionSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -58,8 +56,7 @@ struct AddTransactionSheet: View {
         )
         .cfAdaptiveSheetDetents()
         .onAppear(perform: prefillDefaults)
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var sheetHeight: CGFloat {
@@ -70,96 +67,82 @@ struct AddTransactionSheet: View {
         return height
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(spacing: 12) {
-            CFAmountHeader(
-                title: "Valor do lançamento",
-                amount: $draft.amount,
-                amountColor: amountColor
-            )
-
-            TransactionKindSwitcher(kind: $draft.kind, namespace: switcherNamespace)
-                .frame(maxWidth: 260)
-                .onChange(of: draft.kind) { _, _ in
-                    if let current = draft.category,
-                       current.kind != (draft.kind == .income ? .income : .expense) {
-                        draft.category = nil
-                    }
-                }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 16)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var amountColor: Color {
-        draft.kind == .expense ? CFTheme.textPrimary : CFTheme.accent
-    }
-
     // MARK: - Form
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                fieldSection(title: "Detalhes") {
-                    labeledRow("Categoria") {
-                        categoryPicker
-                    }
-                    labeledRow("Conta") {
-                        accountPicker
-                    }
-                    labeledRow("Data") {
-                        DateField(date: $draft.occurredOn)
-                    }
-                }
-
-                if showsInstallmentSection {
-                    fieldSection(title: "Parcelar") {
-                        labeledRow("Parcelas") {
-                            Stepper(
-                                value: $installmentCount,
-                                in: 1...24
-                            ) {
-                                Text(installmentCount == 1 ? "À vista" : "\(installmentCount)x")
-                                    .font(CFTheme.body())
-                                    .monospacedDigit()
-                            }
-                            .controlSize(.small)
-                        }
-                        if installmentCount > 1 {
-                            Text(installmentSummary)
-                                .font(CFTheme.caption())
-                                .foregroundStyle(CFTheme.textSecondary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                    }
-                }
-
-                if let plan = editingInstallment {
-                    installmentBanner(plan: plan)
-                }
-
-                if showingNote {
-                    fieldSection(title: "Nota") {
-                        TextField("Nota", text: $draft.note, axis: .vertical)
-                            .lineLimit(2...4)
-                            .textFieldStyle(.plain)
-                            .font(CFTheme.body())
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(CFTheme.surfaceElevated.opacity(0.45))
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassPanel(glass: .regular.tint(CFTheme.accent.opacity(0.06))) {
+                        VStack(spacing: 12) {
+                            CFAmountHeader(
+                                title: "Valor do lançamento",
+                                amount: $draft.amount,
+                                amountColor: amountColor
                             )
+                            TransactionKindSwitcher(kind: $draft.kind, namespace: switcherNamespace)
+                                .frame(maxWidth: 260)
+                                .frame(maxWidth: .infinity)
+                                .onChange(of: draft.kind) { _, _ in
+                                    if let current = draft.category,
+                                       current.kind != (draft.kind == .income ? .income : .expense) {
+                                        draft.category = nil
+                                    }
+                                }
+                        }
+                        .padding(18)
+                    }
+
+                    CFGlassFormPanel(title: "Detalhes") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Categoria") { categoryPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Conta") { accountPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Data") {
+                                DateField(date: $draft.occurredOn)
+                            }
+                        }
+                    }
+
+                    if showsInstallmentSection {
+                        CFGlassFormPanel(title: "Parcelar") {
+                            VStack(spacing: 0) {
+                                CFGlassLabeledField(label: "Parcelas") {
+                                    Stepper(value: $installmentCount, in: 1...24) {
+                                        Text(installmentCount == 1 ? "À vista" : "\(installmentCount)x")
+                                            .monospacedDigit()
+                                    }
+                                    .controlSize(.small)
+                                    .tint(CFTheme.accent)
+                                }
+                                if installmentCount > 1 {
+                                    Text(installmentSummary)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                        .padding(.bottom, CFGlassMetrics.rowVerticalPadding)
+                                }
+                            }
+                        }
+                    }
+
+                    if let plan = editingInstallment {
+                        installmentBanner(plan: plan)
+                    }
+
+                    if showingNote {
+                        CFGlassFormPanel(title: "Nota") {
+                            TextField("Nota", text: $draft.note, axis: .vertical)
+                                .lineLimit(2...4)
+                                .textFieldStyle(.plain)
+                                .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
+                        }
                     }
                 }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
         .scrollIndicators(.never)
     }
@@ -190,31 +173,33 @@ struct AddTransactionSheet: View {
         return "\(installmentCount)x de \(per) · 1ª: \(firstText) · última: \(lastText)"
     }
 
+    private var amountColor: Color {
+        draft.kind == .expense ? CFTheme.textPrimary : CFTheme.accent
+    }
+
     private func installmentBanner(plan: InstallmentPlan) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "rectangle.stack.fill")
-                    .font(.caption)
-                    .foregroundStyle(CFTheme.accent)
-                Text("Parcela \(editing?.installmentIndex ?? 0) de \(plan.installmentCount)")
-                    .font(CFTheme.body().weight(.medium))
-                    .foregroundStyle(CFTheme.textPrimary)
-                Spacer()
+        CFGlassPanel(glass: .regular.tint(CFTheme.accent.opacity(0.08))) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.caption)
+                        .foregroundStyle(CFTheme.accent)
+                    Text("Parcela \(editing?.installmentIndex ?? 0) de \(plan.installmentCount)")
+                        .font(.body.weight(.medium))
+                    Spacer()
+                }
+                Text("Editar afeta apenas esta parcela. Para mudar todas, exclua o plano inteiro e cadastre de novo.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button(role: .destructive) {
+                    confirmingDeletePlan = true
+                } label: {
+                    Label("Excluir plano inteiro", systemImage: "trash")
+                }
+                .cfGlassDestructiveButton()
             }
-            Text("Editar afeta apenas esta parcela. Para mudar todas, exclua o plano inteiro e cadastre de novo.")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-            CFPillButton(title: "Excluir plano inteiro", icon: "trash", style: .destructive) {
-                confirmingDeletePlan = true
-            }
+            .padding(14)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(CFTheme.accent.opacity(0.08))
-        )
         .confirmationDialog(
             "Excluir todas as \(plan.installmentCount) parcelas deste plano?",
             isPresented: $confirmingDeletePlan,
@@ -225,34 +210,6 @@ struct AddTransactionSheet: View {
             }
             Button("Cancelar", role: .cancel) {}
         }
-    }
-
-    private func fieldSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-            VStack(spacing: 8) {
-                content()
-            }
-        }
-    }
-
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(label)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textSecondary)
-            Spacer(minLength: 8)
-            content()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
     }
 
     @ViewBuilder
@@ -266,7 +223,9 @@ struct AddTransactionSheet: View {
                     symbolName: category.symbolName,
                     tint: draft.kind == .expense ? CFTheme.expense : CFTheme.accent
                 )
-            }
+            },
+            searchable: true,
+            searchPlaceholder: "Buscar categoria…"
         )
     }
 
@@ -281,7 +240,9 @@ struct AddTransactionSheet: View {
                     symbolName: account.symbolName,
                     tint: Color(hex: account.colorHex)
                 )
-            }
+            },
+            searchable: true,
+            searchPlaceholder: "Buscar conta…"
         )
     }
 
@@ -310,48 +271,44 @@ struct AddTransactionSheet: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 10) {
-            CFPillButton(
-                title: showingNote ? "Ocultar nota" : "Adicionar nota",
-                icon: showingNote ? "text.bubble.fill" : "text.bubble",
-                iconOnly: true,
-                style: .ghost
-            ) {
+        CFGlassSheetFooter(
+            confirmDisabled: !draft.isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(closeAfter: true) }
+        ) {
+            Button {
                 withAnimation(CFMotion.snappy) {
                     showingNote.toggle()
                 }
+            } label: {
+                Label(
+                    showingNote ? "Ocultar nota" : "Adicionar nota",
+                    systemImage: showingNote ? "text.bubble.fill" : "text.bubble"
+                )
             }
+            .cfGlassSecondaryButton()
             .help(showingNote ? "Ocultar nota" : "Adicionar nota")
 
             if showingNote {
-                CFPillButton(title: "Limpar nota", icon: "xmark.circle", iconOnly: true, style: .ghost) {
+                Button {
                     draft.note = ""
+                } label: {
+                    Label("Limpar nota", systemImage: "xmark.circle")
                 }
+                .cfGlassSecondaryButton()
                 .help("Limpar nota")
             }
 
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
+                Button(role: .destructive) {
                     deleteEditing()
+                } label: {
+                    Label("Excluir", systemImage: "trash")
                 }
+                .cfGlassDestructiveButton()
                 .help("Excluir lançamento")
             }
-
-            Spacer()
-
-            CFPillButton(title: "Cancelar", style: .ghost) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-
-            CFPillButton(title: "Salvar", style: .primary) {
-                save(closeAfter: true)
-            }
-            .keyboardShortcut(.defaultAction)
-            .sheetButtonDisabled(!draft.isValid)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     // MARK: - Logic

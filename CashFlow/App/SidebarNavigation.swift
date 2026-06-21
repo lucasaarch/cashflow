@@ -44,7 +44,7 @@ enum SidebarDestination: Hashable {
         case .recurringIncomes: return "arrow.down.circle.fill"
         case .categories: return "tag.fill"
         case .accounts: return "wallet.pass.fill"
-        case .intelligence: return "sparkles"
+        case .intelligence: return AIAssistantIdentity.settingsSymbolName
         }
     }
 }
@@ -90,25 +90,88 @@ struct SidebarDetailView: View {
 
 struct AIChatToolbarButton: View {
     @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @EnvironmentObject private var spotlightState: SpotlightPresentationState
 
     var body: some View {
         Button {
+            if !chatPanelState.isOpen {
+                spotlightState.close()
+            }
             chatPanelState.toggle()
         } label: {
-            Label(AIAssistantIdentity.name, systemImage: "sparkles")
+            Image(systemName: AIAssistantIdentity.toolbarSymbolName)
         }
-        .help("Conversar com \(AIAssistantIdentity.name)")
+        .cfGlassToolbarIconButton()
+        .help("Conversar com \(AIAssistantIdentity.name) (⌘⇧G)")
+    }
+}
+
+struct SpotlightToolbarButton: View {
+    @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @EnvironmentObject private var spotlightState: SpotlightPresentationState
+
+    var body: some View {
+        Button {
+            if !spotlightState.isPresented {
+                chatPanelState.close()
+            }
+            spotlightState.toggle()
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .symbolVariant(spotlightState.isPresented ? .fill : .none)
+        }
+        .cfGlassToolbarIconButton()
+        .help("Buscar em tudo (⌘K)")
     }
 }
 
 struct AIChatPresentationModifier: ViewModifier {
     @EnvironmentObject private var aiService: AIService
     @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @EnvironmentObject private var spotlightState: SpotlightPresentationState
     @Environment(\.cfLayoutMode) private var layoutMode
+    @State private var detailToolbarAdd: DetailToolbarAddAction?
+    @State private var liveResizeWidth: CGFloat?
+
+    private var usesInlineChatInspector: Bool {
+        layoutMode == .regular
+    }
+
+    private var displayedPanelWidth: CGFloat {
+        guard chatPanelState.isOpen else { return 0 }
+        return liveResizeWidth ?? chatPanelState.panelWidth
+    }
 
     func body(content: Content) -> some View {
         Group {
-            if layoutMode == .compact {
+            if usesInlineChatInspector {
+                if chatPanelState.isOpen {
+                    HStack(spacing: 0) {
+                        content
+                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                            .toolbar { chatToolbarItems }
+
+                        Color.clear
+                            .frame(width: displayedPanelWidth)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .trailing) {
+                        AIChatInspectorColumn(
+                            liveWidth: $liveResizeWidth,
+                            aiService: aiService
+                        )
+                        .frame(width: displayedPanelWidth)
+                        .frame(maxHeight: .infinity)
+                        .ignoresSafeArea()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                    .animation(chatPanelState.isResizing ? nil : CFMotion.snappy, value: chatPanelState.isOpen)
+                } else {
+                    content
+                        .toolbar { chatToolbarItems }
+                }
+            } else {
                 content
                     .toolbar { chatToolbarItems }
                     .sheet(isPresented: chatOpenBinding) {
@@ -116,27 +179,14 @@ struct AIChatPresentationModifier: ViewModifier {
                             .environmentObject(chatPanelState)
                             .environmentObject(aiService)
                     }
-            } else {
-                HStack(spacing: 0) {
-                    content
-                        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-                        .toolbar { chatToolbarItems }
-
-                    if chatPanelState.isOpen {
-                        AIChatResizablePanel(aiService: aiService)
-                    }
-                }
-                .animation(chatPanelState.isResizing ? nil : CFMotion.snappy, value: chatPanelState.isOpen)
             }
         }
+        .onPreferenceChange(DetailToolbarAddPreferenceKey.self) { detailToolbarAdd = $0 }
     }
 
     @ToolbarContentBuilder
     private var chatToolbarItems: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            PrivacyToggleToolbarButton()
-            AIChatToolbarButton()
-        }
+        DetailToolbarItems(addAction: detailToolbarAdd)
     }
 
     private var chatOpenBinding: Binding<Bool> {
@@ -153,36 +203,43 @@ struct AIChatPresentationModifier: ViewModifier {
     }
 }
 
-private struct AIChatResizablePanel: View {
+private struct AIChatInspectorColumn: View {
     @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @Binding var liveWidth: CGFloat?
     let aiService: AIService
-
-    @State private var liveWidth: CGFloat?
 
     private var displayWidth: CGFloat {
         liveWidth ?? chatPanelState.panelWidth
     }
 
     var body: some View {
-        AIChatSidePanel(aiService: aiService, presentation: .inlineColumn)
-            .frame(width: displayWidth)
-            .frame(minWidth: 0, maxHeight: .infinity)
-            .clipped()
-            .overlay(alignment: .leading) {
-                CFTrailingPanelResizeHandle(
-                    width: Binding(
-                        get: { displayWidth },
-                        set: { liveWidth = $0 }
-                    ),
-                    range: AIChatPanelState.minPanelWidth...AIChatPanelState.maxPanelWidth,
-                    onDraggingChanged: { chatPanelState.isResizing = $0 },
-                    onDragEnded: { finalWidth in
-                        chatPanelState.setPanelWidth(finalWidth)
-                        liveWidth = nil
-                    }
-                )
-            }
-            .transition(.move(edge: .trailing).combined(with: .opacity))
+        ZStack(alignment: .top) {
+            CFGlassChatPanelBackground()
+                .ignoresSafeArea()
+
+            AIChatSidePanel(
+                aiService: aiService,
+                presentation: .inlineColumn
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .overlay(alignment: .leading) {
+            CFTrailingPanelResizeHandle(
+                width: Binding(
+                    get: { displayWidth },
+                    set: { liveWidth = $0 }
+                ),
+                range: AIChatPanelState.minPanelWidth...AIChatPanelState.maxPanelWidth,
+                onDraggingChanged: { isDragging in
+                    chatPanelState.isResizing = isDragging
+                },
+                onDragEnded: { finalWidth in
+                    chatPanelState.setPanelWidth(finalWidth)
+                    liveWidth = nil
+                }
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

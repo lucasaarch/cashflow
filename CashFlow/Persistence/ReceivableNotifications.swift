@@ -54,6 +54,12 @@ enum ReceivableNotifications {
             .removePendingNotificationRequests(withIdentifiers: [identifier(for: receivable)])
     }
 
+    static func resync(pending receivables: [Receivable]) {
+        for receivable in receivables where receivable.isPending {
+            schedule(for: receivable)
+        }
+    }
+
     private static func identifier(for receivable: Receivable) -> String {
         "receivable-due-\(receivable.id.uuidString)"
     }

@@ -12,7 +12,9 @@ struct FundTransferRow: Identifiable {
 }
 
 struct InvestmentsView: View {
-    @EnvironmentObject private var privacy: PrivacyMode
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -24,21 +26,25 @@ struct InvestmentsView: View {
     @State private var showingTransfer = false
     @State private var transferFundID: UUID?
     @State private var transferDirection: FundTransferDirection = .deposit
+    @State private var fundActionAccount: Account?
+    #if os(macOS)
+    @State private var highlightedFundID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
+    private var allFundAccounts: [Account] {
+        accounts.filter { $0.kind == .investment || $0.kind == .goal }
+    }
 
     private var investmentAccounts: [Account] {
-        accounts.filter { $0.kind == .investment }
+        allFundAccounts.filter { $0.kind == .investment }
     }
 
     private var goalAccounts: [Account] {
-        accounts.filter { $0.kind == .goal }
+        allFundAccounts.filter { $0.kind == .goal }
     }
 
     private var bankAccounts: [Account] {
         accounts.filter { $0.kind == .bank }
-    }
-
-    private var fundAccounts: [Account] {
-        investmentAccounts + goalAccounts
     }
 
     private var overview: FinancialOverview {
@@ -56,7 +62,7 @@ struct InvestmentsView: View {
         FundTransferHistory.build(from: transactions, limit: 12)
     }
 
-    private var hasFunds: Bool { !fundAccounts.isEmpty }
+    private var hasFunds: Bool { !allFundAccounts.isEmpty }
     private var canTransfer: Bool { !bankAccounts.isEmpty && hasFunds }
 
     var body: some View {
@@ -68,16 +74,11 @@ struct InvestmentsView: View {
             }
         }
         .navigationTitle("Investimentos")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    openTransfer()
-                } label: {
-                    Label("Aportar", systemImage: "plus")
-                }
-                .disabled(!canTransfer)
-                .help(canTransfer ? "Registrar aporte ou resgate" : "Cadastre uma conta bancária e um fundo")
-            }
+        .detailToolbarAdd(
+            help: canTransfer ? "Registrar aporte ou resgate" : "Cadastre uma conta bancária e um fundo",
+            disabled: !canTransfer
+        ) {
+            openTransfer()
         }
         .sheet(isPresented: $showingTransfer) {
             FundTransferSheet(
@@ -85,7 +86,27 @@ struct InvestmentsView: View {
                 initialDirection: transferDirection
             )
         }
-        .cfPageBackground()
+        .confirmationDialog(
+            "Movimentação",
+            isPresented: Binding(
+                get: { fundActionAccount != nil },
+                set: { if !$0 { fundActionAccount = nil } }
+            ),
+            presenting: fundActionAccount
+        ) { account in
+            Button("Aportar") {
+                openTransfer(to: account, direction: .deposit)
+            }
+            Button("Resgatar") {
+                openTransfer(to: account, direction: .withdraw)
+            }
+            Button("Cancelar", role: .cancel) {
+                fundActionAccount = nil
+            }
+        } message: { account in
+            Text(account.name)
+        }
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -100,33 +121,66 @@ struct InvestmentsView: View {
     }
 
     private var content: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                summaryHeader
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    summaryHeader(staggerIndex: 0)
 
-                if !investmentAccounts.isEmpty {
-                    fundSection(title: "Investimentos", accounts: investmentAccounts)
-                }
+                    if !investmentAccounts.isEmpty {
+                        fundSection(
+                            title: "Investimentos",
+                            accounts: investmentAccounts,
+                            staggerIndex: 1
+                        )
+                    }
 
-                if !goalAccounts.isEmpty {
-                    fundSection(title: "Metas (reservas)", accounts: goalAccounts)
-                }
+                    if !goalAccounts.isEmpty {
+                        fundSection(
+                            title: "Metas (reservas)",
+                            accounts: goalAccounts,
+                            staggerIndex: investmentAccounts.isEmpty ? 1 : 2
+                        )
+                    }
 
-                if !recentTransfers.isEmpty {
-                    transfersSection
+                    if !recentTransfers.isEmpty {
+                        transfersSection(
+                            staggerIndex: sectionCountBeforeTransfers
+                        )
+                    }
                 }
             }
-            .padding(20)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                activeTarget: spotlightNavigation.activeTarget,
+                extractID: { target in
+                    guard let id = target.entityID(matching: .account),
+                          allFundAccounts.contains(where: { $0.id == id }) else { return nil }
+                    return id
+                },
+                openDetailOnFocus: spotlightNavigation.openDetailOnFocus,
+                highlightedID: $highlightedFundID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let account = allFundAccounts.first(where: { $0.id == id }) {
+                        openTransfer(to: account, direction: .deposit)
+                    }
+                },
+                clearNavigation: spotlightNavigation.clearTarget
+            )
+            #endif
         }
     }
 
-    private var summaryHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Total alocado")
-                .font(CFTheme.caption().weight(.medium))
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
+    private var sectionCountBeforeTransfers: Int {
+        var count = 1
+        if !investmentAccounts.isEmpty { count += 1 }
+        if !goalAccounts.isEmpty { count += 1 }
+        return count
+    }
 
+    private func summaryHeader(staggerIndex: Int) -> some View {
+        CFGlassSummaryPanel(title: "Total alocado", staggerIndex: staggerIndex, tint: CFTheme.accent) {
             CFAnimatedAmount(
                 amount: overview.investmentBalance + overview.goalReservedBalance,
                 font: CFTheme.heroAmount(),
@@ -135,66 +189,52 @@ struct InvestmentsView: View {
 
             if let breakdown = summaryBreakdown {
                 Text(breakdown)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textTertiary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
-        .padding(.bottom, 4)
     }
 
     private var summaryBreakdown: String? {
         var parts: [String] = []
         if overview.investmentBalance > 0 {
-            parts.append("Investido \(overview.investmentBalance.brl(masked: privacy.valuesHidden))")
+            parts.append("Investido \(overview.investmentBalance.brl)")
         }
         if overview.goalReservedBalance > 0 {
-            parts.append("Metas \(overview.goalReservedBalance.brl(masked: privacy.valuesHidden))")
+            parts.append("Metas \(overview.goalReservedBalance.brl)")
         }
         if monthSummary.investedThisMonth != 0 {
             let sign = monthSummary.investedThisMonth >= 0 ? "+" : ""
-            parts.append("\(sign)\(monthSummary.investedThisMonth.brl(masked: privacy.valuesHidden)) no mês")
+            parts.append("\(sign)\(monthSummary.investedThisMonth.brl) no mês")
         }
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
     }
 
-    private func fundSection(title: String, accounts: [Account]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(accounts) { account in
+    private func fundSection(title: String, accounts: [Account], staggerIndex: Int) -> some View {
+        CFGlassSection(
+            title: title,
+            count: accounts.count,
+            countTint: CFTheme.accent,
+            staggerIndex: staggerIndex
+        ) {
+            CFGlassEnumeratedPanel(items: accounts) { account, _ in
                 let balance = account.currentBalance(considering: transactions)
-                CFHoverRow {
-                    HStack(spacing: 12) {
-                        CFIconBadge(
-                            symbolName: account.symbolName,
-                            tint: Color(hex: account.colorHex),
-                            size: 34
-                        )
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(account.name)
-                                .font(CFTheme.body().weight(.medium))
-                                .foregroundStyle(CFTheme.textPrimary)
-                            Text(account.kind.displayName)
-                                .font(CFTheme.caption())
-                                .foregroundStyle(CFTheme.textSecondary)
-                        }
-                        Spacer(minLength: 0)
-                        Text(balance.brl(masked: privacy.valuesHidden))
-                            .font(CFTheme.kpiValue())
-                            .foregroundStyle(CFTheme.textPrimary)
-                    }
+                CFGlassRowButton {
+                    fundActionAccount = account
+                } label: {
+                    CFGlassAmountRow(
+                        systemName: account.symbolName,
+                        tint: Color(hex: account.colorHex),
+                        title: account.name,
+                        subtitle: account.kind.displayName,
+                        amount: balance.brl
+                    )
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    openTransfer(to: account, direction: .deposit)
-                }
+                .id(account.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedFundID == account.id)
+                #endif
                 .contextMenu {
                     Button {
                         openTransfer(to: account, direction: .deposit)
@@ -211,40 +251,30 @@ struct InvestmentsView: View {
         }
     }
 
-    private var transfersSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Movimentações recentes")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(recentTransfers) { row in
-                CFHoverRow {
-                    HStack(spacing: 12) {
-                        CFIconBadge(
-                            symbolName: row.fundKind == .investment ? "chart.line.uptrend.xyaxis" : "flag.fill",
+    private func transfersSection(staggerIndex: Int) -> some View {
+        CFGlassSection(
+            title: "Movimentações recentes",
+            count: recentTransfers.count,
+            countTint: CFTheme.accent,
+            staggerIndex: staggerIndex
+        ) {
+            CFGlassPanel {
+                VStack(spacing: 0) {
+                    ForEach(Array(recentTransfers.enumerated()), id: \.element.id) { index, row in
+                        CFGlassAmountRow(
+                            systemName: row.fundKind == .investment ? "chart.line.uptrend.xyaxis" : "flag.fill",
                             tint: CFTheme.accent,
-                            size: 30
+                            title: row.title,
+                            subtitle: row.subtitle,
+                            amount: row.amount.brl,
+                            statusBadge: row.isPlanned ? "Previsto" : nil,
+                            statusBadgeTint: CFTheme.warning
                         )
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.title)
-                                .font(CFTheme.body())
-                                .foregroundStyle(CFTheme.textPrimary)
-                            Text(row.subtitle)
-                                .font(CFTheme.caption())
-                                .foregroundStyle(CFTheme.textSecondary)
-                        }
-                        Spacer(minLength: 0)
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(row.amount.brl(masked: privacy.valuesHidden))
-                                .font(CFTheme.kpiValue())
-                                .foregroundStyle(CFTheme.textPrimary)
-                            if row.isPlanned {
-                                Text("Previsto")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(CFTheme.warning)
-                            }
+                        .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                        .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
+
+                        if index < recentTransfers.count - 1 {
+                            CFGlassPanelDivider()
                         }
                     }
                 }
@@ -308,3 +338,4 @@ enum FundTransferHistory {
             .map { $0 }
     }
 }
+

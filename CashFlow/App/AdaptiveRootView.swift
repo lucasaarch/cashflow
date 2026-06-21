@@ -22,6 +22,7 @@ struct AdaptiveRootView: View {
         }
         .background(CFTheme.surfacePrimary)
         .overlay { WidgetSnapshotSync() }
+        .overlay { SpotlightSearchLayer() }
         .onAppear(perform: runStartupTasks)
     }
 
@@ -33,13 +34,36 @@ struct AdaptiveRootView: View {
         CardStatementMaterializer.materializeAll(context: modelContext)
         try? modelContext.save()
         migrateSecureCredentialsIfNeeded()
-        Task { await BillNotifications.ensureAuthorization() }
+        resyncNotifications()
+    }
+
+    private func resyncNotifications() {
+        Task { @MainActor in
+            await BillNotifications.ensureAuthorization()
+            await ReceivableNotifications.ensureAuthorization()
+
+            let billDescriptor = FetchDescriptor<Bill>()
+            let receivableDescriptor = FetchDescriptor<Receivable>()
+
+            if let bills = try? modelContext.fetch(billDescriptor) {
+                BillNotifications.resync(pending: bills)
+            }
+            if let receivables = try? modelContext.fetch(receivableDescriptor) {
+                ReceivableNotifications.resync(pending: receivables)
+            }
+        }
     }
 
     private func migrateSecureCredentialsIfNeeded() {
-        for key in [SecureStore.Key.openAIAPIKey, .anthropicAPIKey] {
+        for key in [SecureStore.Key.openAIAPIKey, .anthropicAPIKey, .openAICompatibleAPIKey] {
             guard let value = SecureStore.read(key) else { continue }
             try? SecureStore.save(value, for: key)
+        }
+
+        let configuration = AIConfiguration()
+        for provider in configuration.customProviders {
+            guard let value = SecureStore.readCustomProviderAPIKey(provider.id) else { continue }
+            try? SecureStore.saveCustomProviderAPIKey(value, providerID: provider.id)
         }
     }
 }

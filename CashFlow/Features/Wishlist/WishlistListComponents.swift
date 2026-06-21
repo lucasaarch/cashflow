@@ -2,18 +2,12 @@ import SwiftUI
 import SwiftData
 
 struct WishlistSummaryHeader: View {
-    @EnvironmentObject private var privacy: PrivacyMode
 
     let totalEstimated: Decimal
     let items: [WishlistItem]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Total estimado")
-                .font(CFTheme.dashboardLabel())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-
             CFAnimatedAmount(
                 amount: totalEstimated,
                 font: CFTheme.heroAmount(),
@@ -22,20 +16,16 @@ struct WishlistSummaryHeader: View {
 
             if let breakdown = breakdownText {
                 Text(breakdown)
-                    .font(CFTheme.dashboardMeta())
-                    .foregroundStyle(CFTheme.textTertiary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
-        .padding(.bottom, 4)
     }
 
     private var breakdownText: String? {
         guard !items.isEmpty else { return nil }
-        var parts: [String] = [
-            "\(items.count) \(items.count == 1 ? "item" : "itens")"
-        ]
+        var parts: [String] = []
         let urgent = items.filter { $0.priority == .urgent }.count
         if urgent > 0 {
             parts.append("\(urgent) urgente\(urgent == 1 ? "" : "s")")
@@ -44,12 +34,12 @@ struct WishlistSummaryHeader: View {
         if withDate > 0 {
             parts.append("\(withDate) com prazo")
         }
+        guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
     }
 }
 
 struct WishlistItemRow: View {
-    @EnvironmentObject private var privacy: PrivacyMode
 
     let item: WishlistItem
     var iconSize: CGFloat = 34
@@ -58,25 +48,23 @@ struct WishlistItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CFIconBadge(
-                symbolName: item.category?.symbolName ?? "cart.fill",
+            CFGlassSymbol(
+                systemName: item.category?.symbolName ?? "cart.fill",
                 tint: priorityTint(item.priority),
                 size: iconSize
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
                     .font(nameFont)
-                    .foregroundStyle(CFTheme.textPrimary)
                 if let subtitle = subtitleText {
                     Text(subtitle)
-                        .font(CFTheme.caption())
-                        .foregroundStyle(CFTheme.textSecondary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
-            Text(item.estimatedAmount.brl(masked: privacy.valuesHidden))
+            Text(item.estimatedAmount.brl)
                 .font(amountFont)
-                .foregroundStyle(CFTheme.textPrimary)
         }
     }
 

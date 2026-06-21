@@ -3,20 +3,28 @@ import SwiftData
 
 struct RecurringIncomeListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var privacy: PrivacyMode
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     @Query(sort: [SortDescriptor(\RecurringIncome.createdAt)])
     private var rules: [RecurringIncome]
 
     @State private var showingAdd = false
     @State private var editingRule: RecurringIncome?
+    #if os(macOS)
+    @State private var highlightedRuleID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
-    private var activeRules: [RecurringIncome] {
-        rules.filter { !$0.isPaused }
-    }
+    private var activeRules: [RecurringIncome] { rules.filter { !$0.isPaused } }
+    private var pausedRules: [RecurringIncome] { rules.filter { $0.isPaused } }
 
-    private var pausedRules: [RecurringIncome] {
-        rules.filter { $0.isPaused }
+    private var ruleSections: [(title: String, tint: Color, rules: [RecurringIncome])] {
+        var sections: [(String, Color, [RecurringIncome])] = []
+        if !activeRules.isEmpty { sections.append(("Ativas", CFTheme.income, activeRules)) }
+        if !pausedRules.isEmpty { sections.append(("Pausadas", CFTheme.textSecondary, pausedRules)) }
+        return sections
     }
 
     var body: some View {
@@ -28,15 +36,8 @@ struct RecurringIncomeListView: View {
             }
         }
         .navigationTitle("Rendas fixas")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Nova renda fixa", systemImage: "plus")
-                }
-                .help("Cadastrar renda fixa")
-            }
+        .detailToolbarAdd(help: "Cadastrar renda fixa") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AddRecurringIncomeSheet()
@@ -44,7 +45,7 @@ struct RecurringIncomeListView: View {
         .sheet(item: $editingRule) { rule in
             AddRecurringIncomeSheet(editing: rule)
         }
-        .cfPageBackground()
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -59,89 +60,102 @@ struct RecurringIncomeListView: View {
     }
 
     private var content: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                if !activeRules.isEmpty {
-                    section(title: "Ativas", rules: activeRules)
-                }
-                if !pausedRules.isEmpty {
-                    section(title: "Pausadas", rules: pausedRules)
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    ForEach(Array(ruleSections.enumerated()), id: \.offset) { index, section in
+                        ruleSection(
+                            title: section.title,
+                            tint: section.tint,
+                            rules: section.rules,
+                            staggerIndex: index
+                        )
+                    }
                 }
             }
-            .padding(20)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .recurringIncome,
+                highlightedID: $highlightedRuleID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let rule = rules.first(where: { $0.id == id }) {
+                        editingRule = rule
+                    }
+                }
+            )
+            #endif
         }
     }
 
-    private func section(title: String, rules: [RecurringIncome]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(rules) { rule in
-                CFHoverRow {
+    private func ruleSection(
+        title: String,
+        tint: Color,
+        rules: [RecurringIncome],
+        staggerIndex: Int
+    ) -> some View {
+        CFGlassSection(
+            title: title,
+            count: rules.count,
+            countTint: tint,
+            staggerIndex: staggerIndex
+        ) {
+            CFGlassEnumeratedPanel(items: rules) { rule, _ in
+                CFGlassRowButton {
+                    editingRule = rule
+                } label: {
                     rowContent(rule)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { editingRule = rule }
+                .id(rule.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedRuleID == rule.id)
+                #endif
                 .contextMenu {
-                    Button {
-                        editingRule = rule
-                    } label: {
-                        Label("Editar", systemImage: "pencil")
-                    }
-                    Button {
-                        togglePause(rule)
-                    } label: {
-                        Label(rule.isPaused ? "Retomar" : "Pausar", systemImage: rule.isPaused ? "play.fill" : "pause.fill")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        deleteAll(rule)
-                    } label: {
-                        Label("Excluir tudo (regra + ocorrências)", systemImage: "trash")
-                    }
-                    Button(role: .destructive) {
-                        deleteRuleOnly(rule)
-                    } label: {
-                        Label("Manter histórico, remover regra", systemImage: "xmark.bin")
-                    }
+                    ruleContextMenu(rule)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func ruleContextMenu(_ rule: RecurringIncome) -> some View {
+        Button {
+            editingRule = rule
+        } label: {
+            Label("Editar", systemImage: "pencil")
+        }
+        Button {
+            togglePause(rule)
+        } label: {
+            Label(rule.isPaused ? "Retomar" : "Pausar", systemImage: rule.isPaused ? "play.fill" : "pause.fill")
+        }
+        Divider()
+        Button(role: .destructive) {
+            deleteAll(rule)
+        } label: {
+            Label("Excluir tudo (regra + ocorrências)", systemImage: "trash")
+        }
+        Button(role: .destructive) {
+            deleteRuleOnly(rule)
+        } label: {
+            Label("Manter histórico, remover regra", systemImage: "xmark.bin")
         }
     }
 
     private func rowContent(_ rule: RecurringIncome) -> some View {
-        HStack(spacing: 12) {
-            CFIconBadge(
-                symbolName: rule.category?.symbolName ?? "arrow.down.circle",
-                tint: rule.isPaused ? CFTheme.textSecondary : CFTheme.income,
-                size: 30
-            )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(rule.name)
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
-                Text(subtitle(for: rule))
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(rule.amount.brl(masked: privacy.valuesHidden))
-                    .font(.callout.monospacedDigit().weight(.medium))
-                    .foregroundStyle(CFTheme.income)
-                Text(rule.account?.name ?? "Sem conta")
-                    .font(.caption2)
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CFTheme.textTertiary)
-        }
-        .opacity(rule.isPaused ? 0.65 : 1)
+        CFGlassAmountRow(
+            systemName: rule.category?.symbolName ?? "arrow.down.circle",
+            tint: rule.isPaused ? CFTheme.textSecondary : CFTheme.income,
+            title: rule.name,
+            subtitle: subtitle(for: rule),
+            amount: rule.amount.brl,
+            amountColor: CFTheme.income,
+            trailingCaption: rule.account?.name ?? "Sem conta",
+            showsChevron: true,
+            dimmed: rule.isPaused
+        )
     }
 
     private func subtitle(for rule: RecurringIncome) -> String {

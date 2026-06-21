@@ -29,7 +29,8 @@ struct AIAgentLoop {
 
         AILogger.agent.debug("Run start: messages=\(conversation.count) tools=\(tools.count)")
         for round in 0..<Self.maxRounds {
-            onStatus?(AIAgentStatusUpdate(toolName: nil, isExecutingTools: false))
+            try Task.checkCancellation()
+            onStatus?(AIAgentStatusUpdate(kind: .thinking))
 
             AILogger.agent.debug("Round \(round + 1): requesting completion")
             let response = try await aiService.completeWithTools(
@@ -38,6 +39,7 @@ struct AIAgentLoop {
                 temperature: temperature,
                 maxTokens: maxTokens
             )
+            try Task.checkCancellation()
             AILogger.agent.debug("Round \(round + 1): completion received toolCalls=\(response.toolCalls.count) contentChars=\(response.content.count)")
 
             if response.hasToolCalls {
@@ -47,7 +49,7 @@ struct AIAgentLoop {
 
                 for call in response.toolCalls {
                     AILogger.tools.debug("Executing tool=\(call.name, privacy: .public) args=\(call.argumentsJSON, privacy: .public)")
-                    onStatus?(AIAgentStatusUpdate(toolName: call.name, isExecutingTools: true))
+                    onStatus?(AIAgentStatusUpdate(kind: .toolStarted(name: call.name, callID: call.id)))
 
                     let outcome: AIToolExecutionOutcome
                     if pendingWrite != nil, AIToolCatalog.definition(named: call.name)?.isWrite == true {
@@ -69,6 +71,8 @@ struct AIAgentLoop {
                     if pendingWrite == nil, let pending = outcome.pendingWrite {
                         pendingWrite = pending
                     }
+
+                    onStatus?(AIAgentStatusUpdate(kind: .toolFinished(name: call.name, callID: call.id)))
                 }
 
                 if let pendingWrite {
@@ -113,6 +117,7 @@ struct AIAgentLoop {
 
         var finalContent = ""
         for try await chunk in aiService.stream(messages: conversation, temperature: temperature, maxTokens: maxTokens) {
+            try Task.checkCancellation()
             if !chunk.content.isEmpty {
                 finalContent += chunk.content
                 onPartialContent?(chunk.content)
@@ -137,8 +142,9 @@ struct AIAgentLoop {
     ) async throws -> AIAgentRunResult {
         var conversation = messages
         let call = AIToolCall(id: pending.toolCallID, name: pending.toolName, argumentsJSON: pending.argumentsJSON)
-        onStatus?(AIAgentStatusUpdate(toolName: pending.toolName, isExecutingTools: true))
+        onStatus?(AIAgentStatusUpdate(kind: .toolStarted(name: pending.toolName, callID: pending.toolCallID)))
         let outcome = executor.execute(call: call, confirmed: true)
+        onStatus?(AIAgentStatusUpdate(kind: .toolFinished(name: pending.toolName, callID: pending.toolCallID)))
 
         // The conversation already contains a placeholder tool_result with status
         // pending_confirmation for this same tool_use_id. Anthropic rejects two
@@ -176,7 +182,9 @@ struct AIAgentLoop {
         ]
         if smallTalk.contains(where: { trimmed.contains($0) }) { return nil }
 
+        if ChatPrompts.isConversationalContinuation(trimmed) { return nil }
         if looksLikeWriteIntent(trimmed) { return writeNudge }
+        if !ChatPrompts.looksLikeFinancialOrPlanningQuestion(trimmed) { return nil }
         return readNudge
     }
 

@@ -31,6 +31,7 @@ struct MonthDashboardView: View {
     private var categories: [Category]
 
     @State private var referenceDate: Date = .now
+    @State private var usesSingleColumnLayout: Bool?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.cfLayoutMode) private var layoutMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -39,18 +40,40 @@ struct MonthDashboardView: View {
         if layoutMode == .compact || horizontalSizeClass == .compact {
             return true
         }
-        guard availableWidth > 0 else { return true }
-        return availableWidth < Self.twoColumnMinWidth
+        guard availableWidth > 0 else {
+            return usesSingleColumnLayout ?? true
+        }
+
+        let threshold = Self.twoColumnMinWidth
+        let hysteresis: CGFloat = 64
+        let wantsSingle = availableWidth < threshold
+
+        guard let current = usesSingleColumnLayout else {
+            return wantsSingle
+        }
+
+        if current {
+            return availableWidth < threshold + hysteresis
+        }
+        return availableWidth < threshold - hysteresis
     }
 
     /// Minimum dashboard width that keeps each column readable after padding and spacing.
     private static let twoColumnMinWidth: CGFloat = (500 * 2) + 12 + (16 * 2)
 
+    private var categoryBudgetsMap: [UUID: Decimal] {
+        Dictionary(uniqueKeysWithValues: categories.compactMap { category in
+            guard let budget = category.monthlyBudget else { return nil }
+            return (category.id, budget)
+        })
+    }
+
     private var summary: MonthSummary {
         MonthSummary(
             referenceDate: referenceDate,
             transactions: transactions,
-            pendingReceivables: receivables
+            pendingReceivables: receivables,
+            categoryBudgets: categoryBudgetsMap
         )
     }
 
@@ -59,7 +82,15 @@ struct MonthDashboardView: View {
         return MonthSummary(
             referenceDate: previousMonth,
             transactions: transactions,
-            pendingReceivables: receivables
+            pendingReceivables: receivables,
+            categoryBudgets: categoryBudgetsMap
+        )
+    }
+
+    private var spendingHistory: SpendingHistoryContext {
+        SpendingHistoryContext.analyze(
+            referenceDate: referenceDate,
+            transactions: transactions
         )
     }
 
@@ -100,9 +131,16 @@ struct MonthDashboardView: View {
                 ToolbarItem(placement: .navigation) {
                     monthNavigator
                 }
+                .cfHideToolbarSharedBackgroundIfAvailable()
             }
         }
-        .cfPageBackground()
+        .onAppear {
+            WeeklyReminderNotifications.resync(bills: bills, receivables: receivables)
+        }
+        .onChange(of: bills.count) { _, _ in
+            WeeklyReminderNotifications.resync(bills: bills, receivables: receivables)
+        }
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -118,18 +156,25 @@ struct MonthDashboardView: View {
             let isSingleColumn = usesSingleColumn(availableWidth: proxy.size.width)
 
             CFScrollView {
-                dashboardGrid(isSingleColumn: isSingleColumn)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .cfStaggerAppear(index: 0)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .offset(y: 8)),
-                        removal: .opacity
-                    ))
-                    .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
+                GlassEffectContainer(spacing: 12) {
+                    dashboardGrid(isSingleColumn: isSingleColumn)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .cfStaggerAppear(index: 0)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 8)),
+                    removal: .opacity
+                ))
+                .animation(reduceMotion ? nil : CFMotion.gentle, value: referenceDate)
             }
-            .cfPageBackground()
+            .onChange(of: proxy.size.width) { _, width in
+                usesSingleColumnLayout = usesSingleColumn(availableWidth: width)
+            }
+            .onAppear {
+                usesSingleColumnLayout = usesSingleColumn(availableWidth: proxy.size.width)
+            }
         }
     }
 
@@ -141,7 +186,6 @@ struct MonthDashboardView: View {
                 twoColumnLayout(isSingleColumn: isSingleColumn)
             }
         }
-        .animation(reduceMotion ? nil : CFMotion.gentle, value: isSingleColumn)
     }
 
     private func twoColumnLayout(isSingleColumn: Bool) -> some View {
@@ -174,10 +218,26 @@ struct MonthDashboardView: View {
 
         DashboardMonthPanel(
             summary: summary,
+            history: spendingHistory,
             showsPace: showsPace
         )
         .id(referenceDate)
         .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardCategoryBudgetsPanel(summary: summary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardWeekCommitmentsPanel(
+            bills: bills,
+            receivables: receivables,
+            recurringExpenses: recurringExpenses,
+            recurringIncomes: recurringIncomes,
+            referenceDate: referenceDate
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        DashboardInstallmentsPanel(transactions: transactions, referenceDate: referenceDate)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
         if !wishlistItems.isEmpty {
             DashboardWishlistPanel(
@@ -202,14 +262,6 @@ struct MonthDashboardView: View {
             previousSummary: previousSummary
         )
         .frame(maxWidth: .infinity, alignment: .leading)
-
-        if hasCategoryBreakdown {
-            CategoryBreakdownCard(
-                aggregates: summary.expensesByCategory,
-                totalExpense: summary.totalExpense
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
 
         DashboardInvestmentsChartCard(
             transactions: transactions,
@@ -244,6 +296,14 @@ struct MonthDashboardView: View {
             recurringIncomes: recurringIncomes,
             categories: categories
         )
+
+        if hasCategoryBreakdown {
+            CategoryBreakdownCard(
+                aggregates: summary.expensesByCategory,
+                totalExpense: summary.totalExpense
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
 
         DashboardInboxPanel(
             summary: summary,
@@ -318,7 +378,11 @@ struct MonthDashboardView: View {
             .help("Mês seguinte")
         }
         .padding(.horizontal, 12)
+        #if os(macOS)
+        .padding(.vertical, 3)
+        #else
         .padding(.vertical, 6)
+        #endif
         .background(Capsule().fill(CFTheme.textTertiary.opacity(0.1)))
         .animation(reduceMotion ? nil : CFMotion.snappy, value: referenceDate)
     }

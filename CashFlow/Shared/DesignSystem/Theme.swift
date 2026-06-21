@@ -24,6 +24,10 @@ enum CFTheme {
     static func title() -> Font { .system(size: 22, weight: .semibold) }
     static func headline() -> Font { .system(size: 17, weight: .semibold) }
     static func body() -> Font { .system(size: 15) }
+    /// Mensagens e campo de entrada do chat Gio — alinhado ao corpo da sidebar (13pt no macOS).
+    static func chatBody() -> Font { .system(size: 13) }
+    /// Títulos compactos dentro do painel do chat.
+    static func chatHeadline() -> Font { .system(size: 15, weight: .semibold) }
     static func caption() -> Font { .system(size: 12) }
     static func kpiValue() -> Font {
         .system(size: 15, weight: .medium, design: .rounded).monospacedDigit()
@@ -61,47 +65,28 @@ struct CFPageBackgroundModifier: ViewModifier {
     }
 }
 
-struct CFSheetBackgroundModifier: ViewModifier {
-    @FocusState private var sheetFocus: CFFocusTarget?
-
-    func body(content: Content) -> some View {
-        content
-            .presentationBackground(CFTheme.surfacePrimary)
-            .overlay(alignment: .topLeading) {
-                Color.clear
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-                    .focusable()
-                    .focused($sheetFocus, equals: .focusSink)
-            }
-            .defaultFocus($sheetFocus, .focusSink)
-    }
-}
-
-private enum CFFocusTarget: Hashable {
-    case focusSink
-}
-
 extension View {
     func cfPageBackground() -> some View {
         modifier(CFPageBackgroundModifier())
     }
 
-    /// Solid neutral background for sheets — avoids green tint from `.ultraThinMaterial` vibrancy.
-    func cfSheetBackground() -> some View {
-        modifier(CFSheetBackgroundModifier())
-    }
-
-    /// Compact chip styling for inline pickers (category, date, icon).
+    /// Compact chip styling for inline pickers (category, date, icon, color).
+    /// Uses inset material styling — not `glassEffect`, which crashes when nested inside
+    /// `Button` labels within `CFGlassPanel` on macOS.
     func cfPickerChip() -> some View {
-        font(CFTheme.body())
+        self
+            .font(CFTheme.body())
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(CFTheme.surfaceSecondary.opacity(0.8))
-            )
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(CFTheme.surfaceSecondary.opacity(0.55))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(CFTheme.textTertiary.opacity(0.24), lineWidth: 0.5)
+            }
     }
 
     /// Neutral field background + visible border, accent when focused.

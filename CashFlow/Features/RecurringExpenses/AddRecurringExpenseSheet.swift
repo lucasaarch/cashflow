@@ -84,11 +84,6 @@ struct AddRecurringExpenseSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(title: "Valor mensal", amount: $amount)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -102,62 +97,79 @@ struct AddRecurringExpenseSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Identificação") {
-                    CFInputField(label: "Nome", text: $name, placeholder: "Netflix, Aluguel…")
-                    labeledRow("Categoria") { categoryPicker }
-                    labeledRow("Conta") { accountPicker }
-                }
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(title: "Valor mensal", amount: $amount, amountColor: CFTheme.expense)
 
-                section(title: "Cobrança") {
-                    labeledRow("Dia do mês") {
-                        DayOfMonthField(day: $dayOfMonth)
-                    }
-                    labeledRow("Começa em") {
-                        DateField(date: $startDate)
-                    }
-                }
-
-                section(title: "Duração") {
-                    Toggle("Sem prazo (até eu remover)", isOn: $indefinite)
-                        .toggleStyle(.switch)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                    if !indefinite {
-                        labeledRow("Por") {
-                            Stepper(value: $monthsCount, in: 1...120) {
-                                Text("\(monthsCount) \(monthsCount == 1 ? "mês" : "meses")")
-                                    .font(CFTheme.body())
-                                    .monospacedDigit()
+                    CFGlassFormPanel(title: "Identificação") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Nome") {
+                                TextField("Netflix, Aluguel…", text: $name)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
                             }
-                            .controlSize(.small)
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Categoria") { categoryPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Conta") { accountPicker }
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Cobrança") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Dia do mês") {
+                                DayOfMonthField(day: $dayOfMonth)
+                            }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Começa em") {
+                                DateField(date: $startDate)
+                            }
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Duração") {
+                        VStack(spacing: 0) {
+                            CFGlassToggleRow(
+                                title: "Sem prazo (até eu remover)",
+                                isOn: $indefinite
+                            )
+                            if !indefinite {
+                                CFGlassPanelDivider()
+                                CFGlassLabeledField(label: "Por") {
+                                    Stepper(value: $monthsCount, in: 1...120) {
+                                        Text("\(monthsCount) \(monthsCount == 1 ? "mês" : "meses")")
+                                            .monospacedDigit()
+                                    }
+                                    .controlSize(.small)
+                                    .tint(CFTheme.accent)
+                                }
+                            }
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Confirmação") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CFGlassToggleRow(
+                                title: "Precisa confirmação manual ao pagar",
+                                isOn: $requiresConfirmation
+                            )
+                            Text(requiresConfirmation
+                                 ? "Aparece em \"Contas a pagar\" todo mês. Você confirma o pagamento quando ele acontecer."
+                                 : "Vira lançamento automático no dia. Bom pra débito automático ou cobrança no cartão.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                .padding(.bottom, CFGlassMetrics.rowVerticalPadding)
                         }
                     }
                 }
-
-                section(title: "Confirmação") {
-                    Toggle("Precisa confirmação manual ao pagar", isOn: $requiresConfirmation)
-                        .toggleStyle(.switch)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                    Text(requiresConfirmation
-                         ? "Aparece em \"Contas a pagar\" todo mês. Você confirma o pagamento quando ele acontecer."
-                         : "Vira lançamento automático no dia. Bom pra débito automático ou cobrança no cartão.")
-                        .font(CFTheme.caption())
-                        .foregroundStyle(CFTheme.textSecondary)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 6)
-                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -224,26 +236,21 @@ struct AddRecurringExpenseSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
+                Button(role: .destructive) {
                     deleteEditing()
+                } label: {
+                    Label("Excluir", systemImage: "trash")
                 }
+                .cfGlassDestructiveButton()
                 .help("Excluir despesa fixa")
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func endDateForPersistence() -> Date? {

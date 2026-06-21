@@ -12,11 +12,20 @@ final class AIService: ObservableObject {
 
     var activeProviderSupportsTools: Bool {
         guard let id = configuration.activeProvider else { return false }
-        return (try? makeProvider(id).supportsToolCalls) ?? false
+        return (try? providerInstance(for: id, requireVerified: true).supportsToolCalls) ?? false
+    }
+
+    /// Custom OpenAI-compatible providers stream MCP tool events via `x_tool_call` SSE chunks.
+    var activeProviderUsesExternalMCPTools: Bool {
+        guard case .custom(let providerID) = configuration.activeProvider,
+              let provider = configuration.customProvider(id: providerID) else {
+            return false
+        }
+        return provider.supportsTools
     }
 
     func listModels(for provider: AIProviderID) async throws -> [AIModel] {
-        try await makeProvider(provider).listModels()
+        try await providerInstance(for: provider, requireVerified: false).listModels()
     }
 
     func complete(messages: [AIMessage], temperature: Double = 0.4, maxTokens: Int? = nil) async throws -> String {
@@ -51,7 +60,7 @@ final class AIService: ObservableObject {
 
     func stream(messages: [AIMessage], temperature: Double = 0.4, maxTokens: Int? = nil) -> AsyncThrowingStream<AIStreamChunk, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     let provider = try activeProvider()
                     guard let modelID = configuration.activeModelID else {
@@ -64,12 +73,16 @@ final class AIService: ObservableObject {
                         maxTokens: maxTokens
                     )
                     for try await chunk in provider.stream(request) {
+                        try Task.checkCancellation()
                         continuation.yield(chunk)
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }
@@ -78,18 +91,30 @@ final class AIService: ObservableObject {
         guard let id = configuration.activeProvider else {
             throw AIError.noActiveProvider
         }
-        return try makeProvider(id)
+        return try providerInstance(for: id, requireVerified: true)
     }
 
-    private func makeProvider(_ id: AIProviderID) throws -> AIProvider {
-        guard configuration.isConfigured(id) else {
-            throw AIError.notConfigured(id)
-        }
+    private func providerInstance(for id: AIProviderID, requireVerified: Bool) throws -> AIProvider {
         switch id {
         case .openai:
+            guard configuration.isConfigured(.openai) else {
+                throw AIError.notConfigured(.openai)
+            }
             return OpenAIProvider(configuration: configuration)
         case .anthropic:
+            guard configuration.isConfigured(.anthropic) else {
+                throw AIError.notConfigured(.anthropic)
+            }
             return AnthropicProvider(configuration: configuration)
+        case .custom(let providerID):
+            guard let customProvider = configuration.customProvider(id: providerID),
+                  customProvider.resolvedBaseURL != nil else {
+                throw AIError.notConfigured(.custom(providerID))
+            }
+            if requireVerified, !customProvider.isConfigured {
+                throw AIError.notConfigured(.custom(providerID))
+            }
+            return OpenAICompatibleProvider(customProvider: customProvider)
         }
     }
 }

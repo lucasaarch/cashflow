@@ -3,9 +3,8 @@ import SwiftUI
 /// Unified surface with sections separated by dividers.
 struct CFPanel<Content: View>: View {
     var padding: CGFloat = 16
+    var glass: Glass = .regular
     @ViewBuilder var content: () -> Content
-
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,23 +12,7 @@ struct CFPanel<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { panelBackground }
-    }
-
-    @ViewBuilder
-    private var panelBackground: some View {
-        RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-            .fill(CFTheme.surfaceSecondary)
-            .overlay(
-                RoundedRectangle(cornerRadius: CFTheme.cardRadius, style: .continuous)
-                    .stroke(CFTheme.textTertiary.opacity(colorScheme == .dark ? 0.22 : 0.2), lineWidth: 0.5)
-            )
-            .shadow(
-                color: CFTheme.textPrimary.opacity(colorScheme == .dark ? 0 : 0.05),
-                radius: 10,
-                x: 0,
-                y: 2
-            )
+        .glassEffect(glass, in: .rect(cornerRadius: CFGlassMetrics.panelCornerRadius))
     }
 }
 
@@ -79,7 +62,6 @@ struct CFStatChip: View {
     var tint: Color = CFTheme.textPrimary
     var icon: String?
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -94,7 +76,7 @@ struct CFStatChip: View {
                     .foregroundStyle(CFTheme.textSecondary)
                     .lineLimit(1)
             }
-            Text(amount.brl(masked: privacy.valuesHidden))
+            Text(amount.brl)
                 .font(CFTheme.dashboardAmount())
                 .foregroundStyle(tint)
                 .lineLimit(1)

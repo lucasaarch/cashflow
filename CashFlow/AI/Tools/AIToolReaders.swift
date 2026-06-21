@@ -40,6 +40,7 @@ enum AIToolReaders {
         case "get_cash_flow_series": return try getCashFlowSeries(args, context)
         case "get_net_worth_series": return try getNetWorthSeries(args, context)
         case "get_investment_flow_series": return try getInvestmentFlowSeries(args, context)
+        case "preview_write_action": return try previewWriteAction(args, context)
         default:
             throw AIToolExecutorError.unknownTool(name)
         }
@@ -106,7 +107,13 @@ enum AIToolReaders {
     private static func getMonthPace(_ args: [String: Any], _ context: AIToolContext) -> AIToolResultPayload {
         let ref = context.referenceDate(from: args)
         let summary = context.monthSummary(referenceDate: ref)
-        return .success(.object(AIToolFormatters.monthPaceJSON(summary)))
+        let history = SpendingHistoryContext.analyze(
+            referenceDate: ref,
+            transactions: context.transactions,
+            calendar: context.calendar,
+            now: context.now
+        )
+        return .success(.object(AIToolFormatters.monthPaceJSON(summary, history: history)))
     }
 
     private static func getDashboardInsight(_ args: [String: Any], _ context: AIToolContext) -> AIToolResultPayload {
@@ -725,6 +732,24 @@ enum AIToolReaders {
                 "net_invested": .from(point.netInvested)
             ]
         })
+    }
+
+    private static func previewWriteAction(_ args: [String: Any], _ context: AIToolContext) throws -> AIToolResultPayload {
+        guard let action = AIToolJSON.string(args, key: "action"), !action.isEmpty else {
+            throw AIToolExecutorError.invalidArguments("action é obrigatório.")
+        }
+        guard let definition = AIToolCatalog.definition(named: action), definition.isWrite else {
+            throw AIToolExecutorError.invalidArguments("'\(action)' não é uma ferramenta de escrita válida.")
+        }
+
+        var toolArgs = args
+        toolArgs.removeValue(forKey: "action")
+        let summary = try AIToolWriters.buildSummary(toolName: action, args: toolArgs, context: context)
+        return .success(.object([
+            "action": .string(action),
+            "summary": .string(summary),
+            "valid": .bool(true)
+        ]))
     }
 
     private static func parsePeriod(_ args: [String: Any]) throws -> ReportPeriod {

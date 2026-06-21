@@ -27,14 +27,12 @@ struct RescheduleSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            content
+            formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
         }
         .cfAdaptiveSheetNavigation()
-        .cfAdaptiveSheetFrame(width: 380, height: 280)
+        .cfAdaptiveSheetFrame(width: 380, height: 300)
         .cfCompactSheetToolbar(
             title: title,
             saveTitle: "Salvar",
@@ -43,50 +41,36 @@ struct RescheduleSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(subtitle)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textPrimary)
-            Text("Data atual: \(initialDate.formatted(.dateTime.day().month(.wide).locale(Money.locale)))")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 14)
-    }
+    private var formContent: some View {
+        ScrollView {
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetHero(
+                        systemName: "calendar.badge.clock",
+                        title: subtitle,
+                        subtitle: "Data atual: \(initialDate.formatted(.dateTime.day().month(.wide).locale(Money.locale)))"
+                    )
 
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Text("Nova data")
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textSecondary)
-                Spacer(minLength: 8)
-                DateField(date: $date)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(CFTheme.surfaceElevated.opacity(0.38))
-            )
+                    CFGlassFormPanel(title: "Nova data") {
+                        CFGlassLabeledField(label: "Data") {
+                            DateField(date: $date)
+                        }
+                    }
 
-            HStack(spacing: 8) {
-                quickShiftButton(label: "+1 dia", days: 1)
-                quickShiftButton(label: "+7 dias", days: 7)
-                quickShiftButton(label: "+15 dias", days: 15)
-                quickShiftButton(label: "+30 dias", days: 30)
+                    HStack(spacing: 8) {
+                        quickShiftButton(label: "+1 dia", days: 1)
+                        quickShiftButton(label: "+7 dias", days: 7)
+                        quickShiftButton(label: "+15 dias", days: 15)
+                        quickShiftButton(label: "+30 dias", days: 30)
+                    }
+                }
+                .padding(20)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .scrollIndicators(.never)
     }
 
     private func quickShiftButton(label: String, days: Int) -> some View {
@@ -97,29 +81,16 @@ struct RescheduleSheet: View {
         } label: {
             Text(label)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(CFTheme.textSecondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(CFTheme.textTertiary.opacity(0.12)))
         }
-        .buttonStyle(.plain)
+        .cfGlassSecondaryButton()
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(hasChanges ? 1 : 0.5)
-            .allowsHitTesting(hasChanges)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        CFGlassSheetFooter(
+            confirmDisabled: !hasChanges,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        )
     }
 
     private func save() {

@@ -30,8 +30,10 @@ struct CFProgressBar: View {
             }
         }
         .onChange(of: progress) { _, newValue in
-            withAnimation(reduceMotion ? nil : CFMotion.gentle) {
-                animatedProgress = newValue
+            Task { @MainActor in
+                withAnimation(reduceMotion ? nil : CFMotion.gentle) {
+                    animatedProgress = newValue
+                }
             }
         }
     }

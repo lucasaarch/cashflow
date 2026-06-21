@@ -58,7 +58,7 @@ final class AIChatService {
         conversation.updatedAt = .now
 
         if conversation.title == "Nova conversa" {
-            conversation.title = String(trimmed.prefix(40))
+            conversation.title = ConversationTitleFormatter.make(from: trimmed)
         }
 
         let toolContext = AIToolContext(
@@ -81,6 +81,18 @@ final class AIChatService {
         let assistantMessage = ChatMessage(role: .assistant, content: "", conversation: conversation)
         conversation.messages.append(assistantMessage)
         modelContext.insert(assistantMessage)
+
+        if aiService.activeProviderUsesExternalMCPTools {
+            try MCPAvailability.ensureReadyForChat()
+            return try await streamMCPResponse(
+                messages: messages,
+                assistantMessage: assistantMessage,
+                conversation: conversation,
+                context: modelContext,
+                onStatus: onStatus,
+                onPartialContent: onPartialContent
+            )
+        }
 
         if aiService.activeProviderSupportsTools {
             let agent = AIAgentLoop(
@@ -230,9 +242,14 @@ final class AIChatService {
         userText: String,
         toolContext: AIToolContext
     ) -> [AIMessage] {
-        let systemContent = aiService.activeProviderSupportsTools
-            ? ChatPrompts.system(now: toolContext.now)
-            : ChatPrompts.systemWithSnapshotFallback(now: toolContext.now)
+        let systemContent: String
+        if aiService.activeProviderUsesExternalMCPTools {
+            systemContent = ChatPrompts.systemForExternalMCPTools(now: toolContext.now)
+        } else if aiService.activeProviderSupportsTools {
+            systemContent = ChatPrompts.system(now: toolContext.now)
+        } else {
+            systemContent = ChatPrompts.systemWithSnapshotFallback(now: toolContext.now)
+        }
         var messages: [AIMessage] = [
             AIMessage(role: .system, content: systemContent)
         ]
@@ -246,7 +263,7 @@ final class AIChatService {
             messages.append(AIMessage(role: item.role, content: item.content))
         }
 
-        if aiService.activeProviderSupportsTools {
+        if aiService.activeProviderUsesExternalMCPTools || aiService.activeProviderSupportsTools {
             messages.append(AIMessage(role: .user, content: ChatPrompts.userMessage(question: userText)))
         } else {
             let snapshot = AIContextBuilder.financialSnapshot(
@@ -264,6 +281,39 @@ final class AIChatService {
         return messages
     }
 
+    private func streamMCPResponse(
+        messages: [AIMessage],
+        assistantMessage: ChatMessage,
+        conversation: ChatConversation,
+        context modelContext: ModelContext,
+        onStatus: ((AIAgentStatusUpdate) -> Void)?,
+        onPartialContent: ((String) -> Void)?
+    ) async throws -> AIChatSendResult {
+        onStatus?(AIAgentStatusUpdate(kind: .thinking))
+
+        for try await chunk in aiService.stream(messages: messages) {
+            try Task.checkCancellation()
+            if let event = chunk.toolCallEvent {
+                switch event.status {
+                case .started:
+                    onStatus?(AIAgentStatusUpdate(kind: .toolStarted(name: event.name, callID: event.callID)))
+                case .completed:
+                    onStatus?(AIAgentStatusUpdate(kind: .toolFinished(name: event.name, callID: event.callID)))
+                }
+            }
+            if !chunk.content.isEmpty {
+                assistantMessage.content += chunk.content
+                onPartialContent?(chunk.content)
+            }
+            if chunk.isFinished { break }
+        }
+
+        assistantMessage.content = Self.stripToolJSONLeakage(assistantMessage.content)
+        let finalID = pruneIfEmpty(assistantMessage, in: conversation, context: modelContext)
+        conversation.updatedAt = .now
+        return AIChatSendResult(assistantMessageID: finalID, pendingWrite: nil, agentMessages: messages)
+    }
+
     private func streamFallbackResponse(
         messages: inout [AIMessage],
         assistantMessage: ChatMessage,
@@ -273,6 +323,7 @@ final class AIChatService {
         onPartialContent: ((String) -> Void)?
     ) async throws -> AIChatSendResult {
         for try await chunk in aiService.stream(messages: messages) {
+            try Task.checkCancellation()
             if !chunk.content.isEmpty {
                 assistantMessage.content += chunk.content
                 onPartialContent?(chunk.content)

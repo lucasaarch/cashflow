@@ -13,7 +13,6 @@ struct WidgetSnapshotSync: View {
     @Query(sort: [SortDescriptor(\Bill.dueDate)])
     private var bills: [Bill]
 
-    @EnvironmentObject private var privacy: PrivacyMode
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
 
@@ -25,13 +24,19 @@ struct WidgetSnapshotSync: View {
                 publish()
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { publish() }
+                if phase == .active {
+                    Task { @MainActor in
+                        publish()
+                    }
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: ModelContext.didSave)) { notification in
                 guard let savedContext = notification.object as? ModelContext,
                       savedContext.container == modelContext.container
                 else { return }
-                publish()
+                Task { @MainActor in
+                    publish()
+                }
             }
     }
 
@@ -54,8 +59,7 @@ struct WidgetSnapshotSync: View {
             "\(overview.liquidBalance.minorUnits)",
             "\(overview.totalInvestedBalance.minorUnits)",
             "\(overview.pendingBillsTotal.minorUnits)",
-            pendingBillSignature,
-            privacy.valuesHidden ? "hidden" : "visible"
+            pendingBillSignature
         ].joined(separator: "|")
     }
 
@@ -64,7 +68,7 @@ struct WidgetSnapshotSync: View {
             accounts: accounts,
             transactions: transactions,
             bills: bills,
-            valuesHidden: privacy.valuesHidden
+            valuesHidden: false
         )
     }
 }

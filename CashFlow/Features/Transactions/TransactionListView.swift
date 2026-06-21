@@ -3,7 +3,10 @@ import SwiftData
 
 struct TransactionListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var privacy: PrivacyMode
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
+
     @Query(sort: [SortDescriptor(\Transaction.occurredOn, order: .reverse),
                   SortDescriptor(\Transaction.createdAt, order: .reverse)])
     private var transactions: [Transaction]
@@ -16,6 +19,10 @@ struct TransactionListView: View {
 
     @State private var showingAdd = false
     @State private var editingTransaction: Transaction?
+    #if os(macOS)
+    @State private var highlightedTransactionID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
     private var canAddTransaction: Bool {
         !accounts.isEmpty && !categories.isEmpty
@@ -30,16 +37,11 @@ struct TransactionListView: View {
             }
         }
         .navigationTitle("Lançamentos")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Novo lançamento", systemImage: "plus")
-                }
-                .disabled(!canAddTransaction)
-                .help(canAddTransaction ? "Novo lançamento" : "Cadastre conta e categoria primeiro")
-            }
+        .detailToolbarAdd(
+            help: canAddTransaction ? "Novo lançamento" : "Cadastre conta e categoria primeiro",
+            disabled: !canAddTransaction
+        ) {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionSheet()
@@ -47,6 +49,7 @@ struct TransactionListView: View {
         .sheet(item: $editingTransaction) { transaction in
             AddTransactionSheet(editing: transaction)
         }
+        .cfGlassDetailChrome()
     }
 
     @ViewBuilder
@@ -76,56 +79,62 @@ struct TransactionListView: View {
     }
 
     private var list: some View {
-        CFScrollView {
-            LazyVStack(spacing: 4, pinnedViews: [.sectionHeaders]) {
-                ForEach(groupedByDay, id: \.0) { day, items in
-                    Section {
-                        ForEach(items) { transaction in
-                            CFHoverRow {
-                                TransactionRow(transaction: transaction)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                editingTransaction = transaction
-                            }
-                            .contextMenu {
-                                Button {
+        ScrollViewReader { proxy in
+            CFGlassPage(maxWidth: CFGlassMetrics.wideContentMaxWidth) {
+                CFGlassPageStack {
+                    ForEach(Array(groupedByDay.enumerated()), id: \.element.0) { index, group in
+                        let (day, items) = group
+                        VStack(alignment: .leading, spacing: 10) {
+                            CFGlassDayHeader(
+                                title: dayHeader(day),
+                                amount: dayTotal(items),
+                                amountColor: signedAmountColor(dayTotal(items))
+                            )
+                            .padding(.horizontal, 4)
+
+                            CFGlassEnumeratedPanel(items: items, dividerStyle: .fullWidth) { transaction, _ in
+                                CFGlassRowButton {
                                     editingTransaction = transaction
                                 } label: {
-                                    Label("Editar", systemImage: "pencil")
+                                    TransactionRow(transaction: transaction)
                                 }
-                                Button(role: .destructive) {
-                                    modelContext.delete(transaction)
-                                } label: {
-                                    Label("Excluir", systemImage: "trash")
+                                .id(transaction.id)
+                                #if os(macOS)
+                                .spotlightFocused(highlightedTransactionID == transaction.id)
+                                #endif
+                                .contextMenu {
+                                    Button {
+                                        editingTransaction = transaction
+                                    } label: {
+                                        Label("Editar", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        modelContext.delete(transaction)
+                                    } label: {
+                                        Label("Excluir", systemImage: "trash")
+                                    }
                                 }
                             }
-                            .padding(.bottom, 2)
                         }
-                    } header: {
-                        dayHeaderView(for: day, total: dayTotal(items))
+                        .cfStaggerAppear(index: index)
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .transaction,
+                highlightedID: $highlightedTransactionID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let transaction = transactions.first(where: { $0.id == id }) {
+                        editingTransaction = transaction
+                    }
+                }
+            )
+            #endif
         }
-        .cfPageBackground()
-    }
-
-    private func dayHeaderView(for day: Date, total: Decimal) -> some View {
-        HStack {
-            Text(dayHeader(day))
-                .font(CFTheme.headline())
-                .foregroundStyle(CFTheme.textPrimary)
-            Spacer()
-            Text(total.brl(masked: privacy.valuesHidden))
-                .font(CFTheme.kpiValue())
-                .foregroundStyle(signedAmountColor(total))
-                .frame(minWidth: TransactionListMetrics.amountColumnMinWidth, alignment: .trailing)
-        }
-        .padding(.horizontal, TransactionListMetrics.rowContentInset)
-        .padding(.vertical, 8)
     }
 
     private func signedAmountColor(_ amount: Decimal) -> Color {

@@ -4,6 +4,7 @@ struct MonthSummary {
     let referenceDate: Date
     private let transactions: [Transaction]
     private let pendingReceivables: [Receivable]
+    private let categoryBudgets: [UUID: Decimal]
     private let calendar: Calendar
     private let now: Date
 
@@ -11,12 +12,14 @@ struct MonthSummary {
         referenceDate: Date,
         transactions: [Transaction],
         pendingReceivables: [Receivable] = [],
+        categoryBudgets: [UUID: Decimal] = [:],
         calendar: Calendar = .current,
         now: Date = .now
     ) {
         self.referenceDate = referenceDate
         self.transactions = transactions
         self.pendingReceivables = pendingReceivables
+        self.categoryBudgets = categoryBudgets
         self.calendar = calendar
         self.now = now
     }
@@ -108,6 +111,31 @@ struct MonthSummary {
         totalIncome + plannedIncome + pendingReceivableIncome
     }
 
+    struct CategoryBudgetStatus: Identifiable {
+        let id: UUID
+        let category: Category
+        let spent: Decimal
+        let limit: Decimal
+        var ratio: Double {
+            guard limit > 0 else { return 0 }
+            return NSDecimalNumber(decimal: spent / limit).doubleValue
+        }
+    }
+
+    var categoryBudgetStatuses: [CategoryBudgetStatus] {
+        guard !categoryBudgets.isEmpty else { return [] }
+        return expensesByCategory.compactMap { aggregate in
+            guard let limit = categoryBudgets[aggregate.id], limit > 0 else { return nil }
+            return CategoryBudgetStatus(
+                id: aggregate.id,
+                category: aggregate.category,
+                spent: aggregate.total,
+                limit: limit
+            )
+        }
+        .sorted { $0.ratio > $1.ratio }
+    }
+
     /// Honest cash-flow saldo: what actually came in minus what actually went out so far.
     /// Does NOT inflate with expected/budgeted income — that's `expectedIncome` minus expense.
     var balance: Decimal {
@@ -144,7 +172,7 @@ struct MonthSummary {
     }
 
     var dailyBudgetRemaining: Decimal {
-        guard daysRemaining > 0 else { return 0 }
+        guard daysRemaining > 0, expectedIncome > 0 else { return 0 }
         let remaining = max(expectedIncome - totalExpense, 0)
         return remaining / Decimal(daysRemaining)
     }

@@ -1,14 +1,28 @@
 import SwiftUI
 
 struct CFEmptyState: View {
+    @State private var searchText: String = ""
+    
     let symbol: String
     let title: String
     let message: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
+    var onSearch: ((String) -> Void)? = nil
+    var searchPrompt: String? = nil
 
     var body: some View {
         VStack(spacing: 16) {
+            if let onSearch, let searchPrompt = searchPrompt {
+                TextField(searchPrompt, text: $searchText, onCommit: {
+                    onSearch(searchText)
+                })
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                .submitLabel(.search)
+            }
+            
             Image(systemName: symbol)
                 .font(.system(size: 48, weight: .light))
                 .symbolRenderingMode(.hierarchical)

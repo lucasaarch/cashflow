@@ -7,7 +7,6 @@ import SwiftData
 struct ConfirmReceivableSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var privacy: PrivacyMode
 
     @Query(filter: #Predicate<Account> { !$0.isArchived },
            sort: [SortDescriptor(\Account.sortOrder)])
@@ -38,36 +37,17 @@ struct ConfirmReceivableSheet: View {
         guard receivedAmount != receivable.amount, receivable.amount > 0 else { return nil }
         let delta = receivedAmount - receivable.amount
         let prefix = delta > 0 ? "+" : "−"
-        return "\(prefix)\(abs(delta).brl(masked: privacy.valuesHidden)) em relação ao previsto"
+        return "\(prefix)\(abs(delta).brl) em relação ao previsto"
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(
-                title: "Valor recebido",
-                amount: $receivedAmount,
-                amountColor: CFTheme.income
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 8)
-
-            if let caption = differenceCaption {
-                Text(caption)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(receivedAmount >= receivable.amount ? CFTheme.income : CFTheme.warning)
-                    .padding(.bottom, 14)
-            } else {
-                Spacer().frame(height: 8)
-            }
-
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
         }
         .cfAdaptiveSheetNavigation()
-        .cfAdaptiveSheetFrame(width: 460, height: 440)
+        .cfAdaptiveSheetFrame(width: 460, height: 480)
         .cfCompactSheetToolbar(
             title: "Confirmar recebimento",
             saveTitle: "Confirmar",
@@ -76,54 +56,68 @@ struct ConfirmReceivableSheet: View {
             onSave: { confirm(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                infoCard
-                section(title: "Recebimento") {
-                    labeledRow("Conta") { accountPicker }
-                    labeledRow("Data") {
-                        DateField(date: $receivedDate)
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(spacing: 8) {
+                        CFGlassSheetAmountHeader(
+                            title: "Valor recebido",
+                            amount: $receivedAmount,
+                            amountColor: CFTheme.income
+                        )
+                        if let caption = differenceCaption {
+                            Text(caption)
+                                .font(.callout)
+                                .foregroundStyle(receivedAmount >= receivable.amount ? CFTheme.income : CFTheme.warning)
+                                .padding(.horizontal, 4)
+                        }
+                    }
+
+                    infoCard
+
+                    CFGlassFormPanel(title: "Recebimento") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Conta") { accountPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Data") {
+                                DateField(date: $receivedDate)
+                            }
+                        }
                     }
                 }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
 
     private var infoCard: some View {
-        HStack(spacing: 12) {
-            CFIconBadge(
-                symbolName: receivable.category?.symbolName ?? "tray.and.arrow.down",
-                tint: CFTheme.income,
-                size: 32
-            )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(receivable.name)
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
-                Text(expectedCaption)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
+        CFGlassPanel {
+            HStack(spacing: 12) {
+                CFIconBadge(
+                    symbolName: receivable.category?.symbolName ?? "tray.and.arrow.down",
+                    tint: CFTheme.income,
+                    size: 32
+                )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(receivable.name)
+                        .font(.body)
+                    Text(expectedCaption)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(receivable.amount.brl)
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
-            Text(receivable.amount.brl(masked: privacy.valuesHidden))
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(CFTheme.textSecondary)
+            .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+            .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.5))
-        )
     }
 
     private var expectedCaption: String {
@@ -148,50 +142,13 @@ struct ConfirmReceivableSheet: View {
         )
     }
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-            VStack(spacing: 6) {
-                content()
-            }
-        }
-    }
-
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textSecondary)
-            Spacer(minLength: 8)
-            content()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
-    }
-
     private var footer: some View {
-        HStack(spacing: 10) {
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Confirmar recebimento", style: .primary) {
-                confirm()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        CFGlassSheetFooter(
+            confirmTitle: "Confirmar recebimento",
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { confirm(); dismiss() }
+        )
     }
 
     private func confirm() {

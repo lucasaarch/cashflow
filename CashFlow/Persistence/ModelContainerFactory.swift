@@ -15,7 +15,10 @@ enum ModelContainerFactory {
         FinancialGoal.self,
         WishlistItem.self,
         ChatConversation.self,
-        ChatMessage.self
+        ChatMessage.self,
+        ChatToolActivity.self,
+        AIWriteActionLogEntry.self,
+        AIPendingWriteProposal.self
     ])
 
     static func make(inMemory: Bool = false) -> ModelContainer {

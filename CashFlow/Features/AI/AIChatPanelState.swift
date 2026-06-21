@@ -1,5 +1,11 @@
 import Combine
 import SwiftUI
+import SwiftData
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 @MainActor
 final class AIChatPanelState: ObservableObject {
@@ -14,7 +20,8 @@ final class AIChatPanelState: ObservableObject {
     @Published private(set) var panelWidth: CGFloat
     @Published var pendingWrite: AIPendingWriteAction?
     @Published var agentMessages: [AIMessage] = []
-    @Published var toolStatusMessage: String?
+    @Published private(set) var liveToolActivities: [AIToolActivityRecord] = []
+    @Published private(set) var toolActivitiesByMessageID: [UUID: [AIToolActivityRecord]] = [:]
     /// Assistant messages whose typewriter animation has already played. The list
     /// view sits in a LazyVStack, so views are recreated when scrolled offscreen;
     /// without this we'd replay the reveal every time.
@@ -37,17 +44,47 @@ final class AIChatPanelState: ObservableObject {
 
     func toggle() {
         if isOpen {
-            isOpen = false
+            close()
         } else {
             openFresh()
         }
     }
 
-    func close() { isOpen = false }
+    func close() {
+        setOpen(false)
+    }
 
     func openFresh() {
         clearInsightDiscussionContext()
-        isOpen = true
+        setOpen(true)
+    }
+
+    /// Opens the panel without clearing insight context (e.g. MCP write proposal).
+    func ensureOpen(animated: Bool = true) {
+        guard !isOpen else { return }
+        setOpen(true, animated: animated)
+    }
+
+    private static var prefersReducedMotion: Bool {
+        #if os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
+    }
+
+    private func setOpen(_ open: Bool, animated: Bool = true) {
+        guard animated, !Self.prefersReducedMotion, !isResizing else {
+            var transaction = SwiftUI.Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isOpen = open
+            }
+            return
+        }
+        withAnimation(CFMotion.quick) {
+            isOpen = open
+        }
     }
 
     func openToDiscussDashboardInsight(referenceDate: Date, calendar: Calendar = .current) {
@@ -97,7 +134,7 @@ final class AIChatPanelState: ObservableObject {
         wishlistInsightMonthKey = wishlistMonthKey
         self.draft = draft
         insightLaunchToken = UUID()
-        isOpen = true
+        setOpen(true)
     }
 
     private func clearInsightDiscussionContext() {
@@ -108,5 +145,154 @@ final class AIChatPanelState: ObservableObject {
 
     private static func clampWidth(_ width: CGFloat) -> CGFloat {
         min(max(width, minPanelWidth), maxPanelWidth)
+    }
+
+    func beginToolTrace() {
+        liveToolActivities = []
+    }
+
+    func handleAgentStatus(_ update: AIAgentStatusUpdate, treatWriteToolsAsProposals: Bool = false) {
+        switch update.kind {
+        case .thinking:
+            break
+        case .toolStarted(let name, let callID):
+            upsertActivity(
+                callID: callID,
+                toolName: name,
+                isComplete: false,
+                treatWriteToolsAsProposals: treatWriteToolsAsProposals
+            )
+        case .toolFinished(let name, let callID):
+            upsertActivity(
+                callID: callID,
+                toolName: name,
+                isComplete: true,
+                treatWriteToolsAsProposals: treatWriteToolsAsProposals
+            )
+        }
+    }
+
+    func finalizeToolTrace(for messageID: UUID, message: ChatMessage? = nil, context: ModelContext? = nil) {
+        guard !liveToolActivities.isEmpty else { return }
+        toolActivitiesByMessageID[messageID] = liveToolActivities
+        if let message, let context {
+            message.replaceToolActivities(liveToolActivities, in: context)
+            try? context.save()
+        }
+        liveToolActivities = []
+    }
+
+    func toolActivities(for messageID: UUID) -> [AIToolActivityRecord] {
+        toolActivitiesByMessageID[messageID] ?? []
+    }
+
+    func markWriteProposalConfirmed(callID: String, toolName: String) {
+        resolveWriteProposalActivity(callID: callID, toolName: toolName) { index in
+            liveToolActivities[index].awaitingConfirmation = false
+            liveToolActivities[index].userConfirmed = true
+            liveToolActivities[index].userCancelled = false
+            liveToolActivities[index].isComplete = true
+        }
+    }
+
+    func markWriteProposalCancelled(callID: String, toolName: String) {
+        resolveWriteProposalActivity(callID: callID, toolName: toolName) { index in
+            liveToolActivities[index].awaitingConfirmation = false
+            liveToolActivities[index].userConfirmed = false
+            liveToolActivities[index].userCancelled = true
+            liveToolActivities[index].isComplete = true
+        }
+    }
+
+    func visibleToolActivities(_ activities: [AIToolActivityRecord]) -> [AIToolActivityRecord] {
+        activities.filter(\.isVisibleInChat)
+    }
+
+    private func resolveWriteProposalActivity(
+        callID: String,
+        toolName: String,
+        update: (Int) -> Void
+    ) {
+        if let index = liveToolActivities.firstIndex(where: { $0.id == callID }) {
+            update(index)
+            return
+        }
+        if let index = liveToolActivities.lastIndex(where: {
+            $0.toolName == toolName && $0.isWrite && $0.awaitingConfirmation
+        }) {
+            update(index)
+            return
+        }
+        liveToolActivities.append(
+            AIToolActivityRecord(
+                id: callID,
+                toolName: toolName,
+                label: AIToolDisplayName.label(for: toolName),
+                isComplete: true,
+                isWrite: true
+            )
+        )
+        update(liveToolActivities.count - 1)
+    }
+
+    func openWithDraft(_ draft: String, autoSend: Bool = false) {
+        clearInsightDiscussionContext()
+        self.draft = draft
+        if autoSend {
+            insightLaunchToken = UUID()
+        }
+        setOpen(true)
+    }
+
+    func openToDiscussBill(_ bill: Bill) {
+        openWithDraft("Quero pagar a conta \"\(bill.name)\" de \(bill.amount.brl).", autoSend: true)
+    }
+
+    func openToDiscussReceivable(_ receivable: Receivable) {
+        openWithDraft(
+            "Quero confirmar o recebimento de \"\(receivable.name)\" de \(receivable.amount.brl).",
+            autoSend: true
+        )
+    }
+
+    func openToRegisterExpense() {
+        openWithDraft("Quero registrar uma despesa.", autoSend: true)
+    }
+
+    func openToRegisterIncome() {
+        openWithDraft("Quero registrar uma receita.", autoSend: true)
+    }
+
+    func adoptPendingWriteFromMCPStore() {
+        if pendingWrite == nil, let storePending = MCPWriteProposalStore.shared.pendingWrite {
+            pendingWrite = storePending
+        }
+    }
+
+    private func upsertActivity(
+        callID: String,
+        toolName: String,
+        isComplete: Bool,
+        treatWriteToolsAsProposals: Bool
+    ) {
+        let isWrite = AIToolCatalog.definition(named: toolName)?.isWrite ?? false
+        let label = AIToolDisplayName.label(for: toolName)
+        let awaitingConfirmation = treatWriteToolsAsProposals && isWrite && isComplete
+
+        if let index = liveToolActivities.firstIndex(where: { $0.id == callID }) {
+            liveToolActivities[index].isComplete = isComplete
+            liveToolActivities[index].awaitingConfirmation = awaitingConfirmation
+        } else {
+            liveToolActivities.append(
+                AIToolActivityRecord(
+                    id: callID,
+                    toolName: toolName,
+                    label: label,
+                    isComplete: isComplete,
+                    isWrite: isWrite,
+                    awaitingConfirmation: awaitingConfirmation
+                )
+            )
+        }
     }
 }

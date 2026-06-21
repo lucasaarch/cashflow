@@ -13,6 +13,9 @@ struct CFTrailingPanelResizeHandle: View {
     @State private var dragStartWidth: CGFloat?
     @State private var isDragging = false
     @State private var isHovering = false
+    #if os(macOS)
+    @State private var isResizeCursorActive = false
+    #endif
 
     var body: some View {
         Rectangle()
@@ -25,16 +28,22 @@ struct CFTrailingPanelResizeHandle: View {
             }
             .contentShape(Rectangle())
             .offset(x: -5)
+            #if os(macOS)
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    isHovering = true
+                    activateResizeCursor()
+                case .ended:
+                    isHovering = false
+                    updateResizeCursor()
+                }
+            }
+            #else
             .onHover { hovering in
                 isHovering = hovering
-                #if os(macOS)
-                if hovering {
-                    NSCursor.resizeLeftRight.push()
-                } else if !isDragging {
-                    NSCursor.pop()
-                }
-                #endif
             }
+            #endif
             .highPriorityGesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
@@ -42,6 +51,9 @@ struct CFTrailingPanelResizeHandle: View {
                             dragStartWidth = width
                             isDragging = true
                             onDraggingChanged?(true)
+                            #if os(macOS)
+                            activateResizeCursor()
+                            #endif
                         }
                         let start = dragStartWidth ?? width
                         let proposed = start - value.translation.width
@@ -54,12 +66,15 @@ struct CFTrailingPanelResizeHandle: View {
                         onDraggingChanged?(false)
                         onDragEnded?(finalWidth)
                         #if os(macOS)
-                        if !isHovering {
-                            NSCursor.pop()
-                        }
+                        updateResizeCursor()
                         #endif
                     }
             )
+            .onDisappear {
+                #if os(macOS)
+                deactivateResizeCursor()
+                #endif
+            }
             .accessibilityLabel("Redimensionar painel")
             .accessibilityAddTraits(.isButton)
     }
@@ -70,4 +85,26 @@ struct CFTrailingPanelResizeHandle: View {
         }
         return CFTheme.textTertiary.opacity(0.22)
     }
+
+    #if os(macOS)
+    private func activateResizeCursor() {
+        guard !isResizeCursorActive else { return }
+        NSCursor.resizeLeftRight.push()
+        isResizeCursorActive = true
+    }
+
+    private func deactivateResizeCursor() {
+        guard isResizeCursorActive else { return }
+        NSCursor.pop()
+        isResizeCursorActive = false
+    }
+
+    private func updateResizeCursor() {
+        if isDragging || isHovering {
+            activateResizeCursor()
+        } else {
+            deactivateResizeCursor()
+        }
+    }
+    #endif
 }

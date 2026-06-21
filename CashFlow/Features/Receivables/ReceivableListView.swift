@@ -3,7 +3,11 @@ import SwiftData
 
 struct ReceivableListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var privacy: PrivacyMode
+    @EnvironmentObject private var chatPanelState: AIChatPanelState
+    @EnvironmentObject private var aiService: AIService
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
 
     @Query(sort: [SortDescriptor(\Receivable.expectedDate)])
     private var receivables: [Receivable]
@@ -12,25 +16,25 @@ struct ReceivableListView: View {
     @State private var editingReceivable: Receivable?
     @State private var confirmingReceivable: Receivable?
     @State private var reschedulingReceivable: Receivable?
-    @State private var searchText = ""
+    #if os(macOS)
+    @State private var highlightedReceivableID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
-    private var filteredReceivables: [Receivable] {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        let visible = receivables.filter { $0.status != .cancelled }
-        if query.isEmpty { return visible }
-        return visible.filter { $0.name.lowercased().contains(query) }
+    private var visibleReceivables: [Receivable] {
+        receivables.filter { $0.status != .cancelled }
     }
 
     private var late: [Receivable] {
-        filteredReceivables.filter { $0.isLate() }
+        visibleReceivables.filter { $0.isLate() }
     }
 
     private var upcoming: [Receivable] {
-        filteredReceivables.filter { $0.isPending && !$0.isLate() }
+        visibleReceivables.filter { $0.isPending && !$0.isLate() }
     }
 
     private var received: [Receivable] {
-        filteredReceivables.filter { $0.isReceived }
+        visibleReceivables.filter { $0.isReceived }
             .sorted { ($0.receivedOn ?? .distantPast) > ($1.receivedOn ?? .distantPast) }
     }
 
@@ -43,16 +47,8 @@ struct ReceivableListView: View {
             }
         }
         .navigationTitle("Contas a receber")
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Buscar por nome")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Novo recebível", systemImage: "plus")
-                }
-                .help("Cadastrar conta a receber")
-            }
+        .detailToolbarAdd(help: "Cadastrar conta a receber") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AddReceivableSheet()
@@ -73,7 +69,15 @@ struct ReceivableListView: View {
                 ReceivableNotifications.schedule(for: receivable)
             }
         }
-        .cfPageBackground()
+        .cfGlassDetailChrome()
+    }
+
+    private var receivableSections: [(title: String, tint: Color, items: [Receivable])] {
+        var sections: [(String, Color, [Receivable])] = []
+        if !late.isEmpty { sections.append(("Atrasadas", CFTheme.warning, late)) }
+        if !upcoming.isEmpty { sections.append(("A receber", CFTheme.accent, upcoming)) }
+        if !received.isEmpty { sections.append(("Recebidas", CFTheme.income, received)) }
+        return sections
     }
 
     private var emptyState: some View {
@@ -88,79 +92,102 @@ struct ReceivableListView: View {
     }
 
     private var content: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                if !late.isEmpty {
-                    section(title: "Atrasadas", tint: CFTheme.warning, items: late)
-                }
-                if !upcoming.isEmpty {
-                    section(title: "A receber", tint: CFTheme.accent, items: upcoming)
-                }
-                if !received.isEmpty {
-                    section(title: "Recebidas", tint: CFTheme.income, items: received)
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    ForEach(Array(receivableSections.enumerated()), id: \.offset) { index, section in
+                        receivableSection(
+                            title: section.title,
+                            tint: section.tint,
+                            items: section.items,
+                            staggerIndex: index
+                        )
+                    }
                 }
             }
-            .padding(20)
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .receivable,
+                highlightedID: $highlightedReceivableID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    if let receivable = receivables.first(where: { $0.id == id }) {
+                        openReceivable(receivable)
+                    }
+                }
+            )
+            #endif
         }
     }
 
-    private func section(title: String, tint: Color, items: [Receivable]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
-                    .textCase(.uppercase)
-                Text("\(items.count)")
-                    .font(.caption2.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(tint.opacity(0.15)))
-            }
-            .padding(.horizontal, 2)
-
-            ForEach(items) { receivable in
-                CFHoverRow {
+    private func receivableSection(
+        title: String,
+        tint: Color,
+        items: [Receivable],
+        staggerIndex: Int
+    ) -> some View {
+        CFGlassSection(
+            title: title,
+            count: items.count,
+            countTint: tint,
+            staggerIndex: staggerIndex
+        ) {
+            CFGlassEnumeratedPanel(items: items) { receivable, _ in
+                CFGlassRowButton {
+                    openReceivable(receivable)
+                } label: {
                     rowContent(receivable)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    openReceivable(receivable)
-                }
+                .id(receivable.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedReceivableID == receivable.id)
+                #endif
                 .contextMenu {
-                    if receivable.isPending {
-                        Button {
-                            openReceivable(receivable)
-                        } label: {
-                            Label("Confirmar recebimento", systemImage: "checkmark.circle")
-                        }
-                        Button {
-                            reschedulingReceivable = receivable
-                        } label: {
-                            Label("Reagendar", systemImage: "calendar.badge.clock")
-                        }
-                        Button {
-                            receivable.status = .cancelled
-                            ReceivableNotifications.cancel(for: receivable)
-                        } label: {
-                            Label("Cancelar recebível", systemImage: "xmark.circle")
-                        }
-                    }
-                    Button {
-                        editingReceivable = receivable
-                    } label: {
-                        Label("Editar", systemImage: "pencil")
-                    }
-                    Button(role: .destructive) {
-                        ReceivableNotifications.cancel(for: receivable)
-                        modelContext.delete(receivable)
-                    } label: {
-                        Label("Excluir", systemImage: "trash")
-                    }
+                    receivableContextMenu(receivable)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func receivableContextMenu(_ receivable: Receivable) -> some View {
+        if receivable.isPending {
+            Button {
+                openReceivable(receivable)
+            } label: {
+                Label("Confirmar recebimento", systemImage: "checkmark.circle")
+            }
+            Button {
+                reschedulingReceivable = receivable
+            } label: {
+                Label("Reagendar", systemImage: "calendar.badge.clock")
+            }
+            Button {
+                receivable.status = .cancelled
+                ReceivableNotifications.cancel(for: receivable)
+            } label: {
+                Label("Cancelar recebível", systemImage: "xmark.circle")
+            }
+        }
+        Button {
+            editingReceivable = receivable
+        } label: {
+            Label("Editar", systemImage: "pencil")
+        }
+        if receivable.isPending, aiService.configuration.isReady {
+            Button {
+                chatPanelState.openToDiscussReceivable(receivable)
+            } label: {
+                Label("Conversar com \(AIAssistantIdentity.name)", systemImage: "sparkles")
+            }
+        }
+        Button(role: .destructive) {
+            ReceivableNotifications.cancel(for: receivable)
+            modelContext.delete(receivable)
+        } label: {
+            Label("Excluir", systemImage: "trash")
         }
     }
 
@@ -173,33 +200,16 @@ struct ReceivableListView: View {
     }
 
     private func rowContent(_ receivable: Receivable) -> some View {
-        HStack(spacing: 12) {
-            CFIconBadge(
-                symbolName: rowSymbol(for: receivable),
-                tint: rowTint(for: receivable),
-                size: 30
-            )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(receivable.name)
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
-                Text(subtitle(for: receivable))
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(receivable.amount.brl(masked: privacy.valuesHidden))
-                    .font(.callout.monospacedDigit().weight(.medium))
-                    .foregroundStyle(receivable.isReceived ? CFTheme.textSecondary : CFTheme.income)
-                if let account = receivable.account {
-                    Text(account.name)
-                        .font(.caption2)
-                        .foregroundStyle(CFTheme.textTertiary)
-                }
-            }
-        }
-        .opacity(receivable.isReceived ? 0.7 : 1)
+        CFGlassAmountRow(
+            systemName: rowSymbol(for: receivable),
+            tint: rowTint(for: receivable),
+            title: receivable.name,
+            subtitle: subtitle(for: receivable),
+            amount: receivable.amount.brl,
+            amountColor: receivable.isReceived ? Color.secondary : CFTheme.income,
+            trailingCaption: receivable.account?.name,
+            dimmed: receivable.isReceived
+        )
     }
 
     private func rowSymbol(for receivable: Receivable) -> String {

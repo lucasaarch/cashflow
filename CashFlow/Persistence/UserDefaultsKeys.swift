@@ -1,12 +1,19 @@
 import Foundation
 
 enum UserDefaultsKeys {
-    static let hasSeededDefaults = "hasSeededDefaults"
     static let lastUsedAccountID = "lastUsedAccountID"
     static let lastUsedCategoryID = "lastUsedCategoryID"
     static let aiActiveProvider = "ai.activeProvider"
     static let aiActiveModelID = "ai.activeModelID"
+    static let aiCustomProviders = "ai.customProviders"
+    static let aiOpenAICompatibleBaseURL = "ai.openAICompatible.baseURL"
+    static let aiOpenAICompatibleSupportsTools = "ai.openAICompatible.supportsTools"
+    static let aiOpenAICompatibleDidConnect = "ai.openAICompatible.didConnect"
     static let aiChatPanelWidth = "ai.chatPanelWidth"
+    static let aiFavoriteModels = "ai.favoriteModels"
+    static let weeklyReminderEnabled = "notifications.weeklyReminderEnabled"
+    static let weeklyReminderLastScheduledWeek = "notifications.weeklyReminderLastScheduledWeek"
+    static let mcpServerEnabled = "mcp.serverEnabled"
 
     static func aiInsightCacheKey(monthKey: String) -> String {
         "ai.insight.\(monthKey)"

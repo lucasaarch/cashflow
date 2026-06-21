@@ -1,5 +1,11 @@
 import SwiftUI
 
+private enum CFSelectFieldLayout {
+    static let searchThreshold = 12
+    static let scrollThreshold = 8
+    static let defaultScrollHeight: CGFloat = 320
+}
+
 struct CFSelectOption<ID: Hashable>: Identifiable {
     let id: ID
     let title: String
@@ -13,15 +19,42 @@ struct CFSelectField<ID: Hashable>: View {
     var disabled: Bool = false
     var popoverWidth: CGFloat = 220
     var popoverMaxHeight: CGFloat? = nil
+    /// When `nil`, search is enabled automatically for lists with 12 or more options.
+    var searchable: Bool? = nil
+    var searchPlaceholder: String = "Buscar…"
 
     @State private var showingPicker = false
+    @State private var searchQuery = ""
 
     private var selected: CFSelectOption<ID>? {
         options.first { $0.id == selection }
     }
 
+    private var isSearchEnabled: Bool {
+        searchable ?? (options.count >= CFSelectFieldLayout.searchThreshold)
+    }
+
+    private var usesScrollContainer: Bool {
+        popoverMaxHeight != nil || options.count > CFSelectFieldLayout.scrollThreshold || isSearchEnabled
+    }
+
+    private var effectiveMaxHeight: CGFloat {
+        popoverMaxHeight ?? CFSelectFieldLayout.defaultScrollHeight
+    }
+
+    private var effectivePopoverWidth: CGFloat {
+        isSearchEnabled ? max(popoverWidth, 300) : popoverWidth
+    }
+
+    private var filteredOptions: [CFSelectOption<ID>] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return options }
+        return options.filter { matchesSearch($0, query: query) }
+    }
+
     var body: some View {
         Button {
+            searchQuery = ""
             showingPicker = true
         } label: {
             triggerLabel
@@ -30,6 +63,11 @@ struct CFSelectField<ID: Hashable>: View {
         .disabled(disabled || options.isEmpty)
         .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: "Selecionar") {
             popoverContent
+        }
+        .onChange(of: showingPicker) { _, isShowing in
+            if !isShowing {
+                searchQuery = ""
+            }
         }
     }
 
@@ -44,6 +82,8 @@ struct CFSelectField<ID: Hashable>: View {
                 }
                 Text(selected.title)
                     .foregroundStyle(CFTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             Image(systemName: "chevron.up.chevron.down")
                 .font(.caption2)
@@ -54,24 +94,69 @@ struct CFSelectField<ID: Hashable>: View {
 
     @ViewBuilder
     private var popoverContent: some View {
-        if let popoverMaxHeight {
-            ScrollView {
-                optionsList
+        if usesScrollContainer {
+            VStack(spacing: 0) {
+                if isSearchEnabled {
+                    searchBar
+                    Divider()
+                }
+                ScrollView {
+                    optionsList(options: filteredOptions)
+                }
+                .scrollIndicators(.visible)
             }
-            .frame(width: popoverWidth, height: popoverMaxHeight)
+            .frame(width: effectivePopoverWidth, height: effectiveMaxHeight)
         } else {
-            optionsList
+            optionsList(options: options)
                 .frame(width: popoverWidth)
         }
     }
 
-    private var optionsList: some View {
-        VStack(spacing: 8) {
-            ForEach(options) { option in
-                optionRow(option)
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(CFTheme.textSecondary)
+            TextField(searchPlaceholder, text: $searchQuery)
+                .textFieldStyle(.plain)
+                .foregroundStyle(CFTheme.textPrimary)
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(CFTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .cfGlassPickerSearchBar()
+    }
+
+    private func optionsList(options: [CFSelectOption<ID>]) -> some View {
+        LazyVStack(spacing: 8) {
+            if options.isEmpty {
+                Text("Nenhum resultado")
+                    .font(CFTheme.caption())
+                    .foregroundStyle(CFTheme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else {
+                ForEach(options) { option in
+                    optionRow(option)
+                }
             }
         }
         .padding(12)
+    }
+
+    private func matchesSearch(_ option: CFSelectOption<ID>, query: String) -> Bool {
+        if option.title.localizedCaseInsensitiveContains(query) { return true }
+        if let stringID = option.id as? String, stringID.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+        return String(describing: option.id).localizedCaseInsensitiveContains(query)
     }
 
     private func optionRow(_ option: CFSelectOption<ID>) -> some View {
@@ -92,6 +177,8 @@ struct CFSelectField<ID: Hashable>: View {
                 Text(option.title)
                     .font(CFTheme.body())
                     .foregroundStyle(CFTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
@@ -101,16 +188,7 @@ struct CFSelectField<ID: Hashable>: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? option.tint.opacity(0.18) : CFTheme.surfaceElevated.opacity(0.4))
-                    .overlay {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(option.tint.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-            }
+            .cfGlassPickerOption(isSelected: isSelected, tint: option.tint)
         }
         .buttonStyle(.plain)
     }
@@ -123,8 +201,24 @@ struct CFSelectFieldOptional<ID: Hashable>: View {
     var disabled: Bool = false
     var popoverWidth: CGFloat = 240
     var popoverMaxHeight: CGFloat = 280
+    var searchable: Bool? = nil
+    var searchPlaceholder: String = "Buscar…"
 
     @State private var showingPicker = false
+    @State private var searchQuery = ""
+
+    private var isSearchEnabled: Bool {
+        searchable ?? (options.count >= CFSelectFieldLayout.searchThreshold)
+    }
+
+    private var filteredOptions: [CFSelectOption<ID>] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return options }
+        return options.filter { option in
+            option.title.localizedCaseInsensitiveContains(query)
+                || String(describing: option.id).localizedCaseInsensitiveContains(query)
+        }
+    }
 
     private var selected: CFSelectOption<ID>? {
         guard let selection else { return nil }
@@ -140,16 +234,45 @@ struct CFSelectFieldOptional<ID: Hashable>: View {
         .buttonStyle(.plain)
         .disabled(disabled || options.isEmpty)
         .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: placeholder) {
-            ScrollView {
-                VStack(spacing: 8) {
-                    ForEach(options) { option in
-                        optionRow(option)
-                    }
+            VStack(spacing: 0) {
+                if isSearchEnabled {
+                    optionalSearchBar
+                    Divider()
                 }
-                .padding(12)
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(filteredOptions) { option in
+                            optionRow(option)
+                        }
+                    }
+                    .padding(12)
+                }
+                .scrollIndicators(.visible)
             }
-            .frame(width: popoverWidth, height: popoverMaxHeight)
+            .frame(width: isSearchEnabled ? max(popoverWidth, 300) : popoverWidth, height: popoverMaxHeight)
         }
+        .onChange(of: showingPicker) { _, isShowing in
+            if !isShowing { searchQuery = "" }
+        }
+    }
+
+    private var optionalSearchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(CFTheme.textSecondary)
+            TextField(searchPlaceholder, text: $searchQuery)
+                .textFieldStyle(.plain)
+            if !searchQuery.isEmpty {
+                Button { searchQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(CFTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .cfGlassPickerSearchBar()
     }
 
     private var triggerLabel: some View {
@@ -201,16 +324,7 @@ struct CFSelectFieldOptional<ID: Hashable>: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? option.tint.opacity(0.18) : CFTheme.surfaceElevated.opacity(0.4))
-                    .overlay {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(option.tint.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-            }
+            .cfGlassPickerOption(isSelected: isSelected, tint: option.tint)
         }
         .buttonStyle(.plain)
     }

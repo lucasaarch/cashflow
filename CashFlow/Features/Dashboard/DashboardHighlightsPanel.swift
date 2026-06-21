@@ -5,7 +5,6 @@ import SwiftData
 /// Filters bills/receivables to the selected reference month so the dashboard stays in sync
 /// with the month navigator.
 struct DashboardHighlightsPanel: View {
-    @EnvironmentObject private var privacy: PrivacyMode
 
     let bills: [Bill]
     let receivables: [Receivable]
@@ -92,7 +91,7 @@ struct DashboardHighlightsPanel: View {
                             .font(.callout)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(bill.amount.brl(masked: privacy.valuesHidden))
+                        Text(bill.amount.brl)
                             .font(CFTheme.dashboardAmount())
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -120,7 +119,7 @@ struct DashboardHighlightsPanel: View {
                             .font(.callout)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(receivable.amount.brl(masked: privacy.valuesHidden))
+                        Text(receivable.amount.brl)
                             .font(CFTheme.dashboardAmount())
                             .foregroundStyle(CFTheme.income)
                             .lineLimit(1)

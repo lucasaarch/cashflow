@@ -8,6 +8,9 @@ final class ChatMessage {
     var content: String
     var createdAt: Date
 
+    @Relationship(deleteRule: .cascade, inverse: \ChatToolActivity.message)
+    var toolActivities: [ChatToolActivity] = []
+
     var conversation: ChatConversation?
 
     var role: AIMessageRole {

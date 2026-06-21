@@ -75,17 +75,19 @@ enum AIToolFormatters {
         var object: [String: AIToolJSONValue] = [
             "id": .string(item.id.uuidString),
             "name": .string(item.name),
-            "estimated_amount": .from(item.estimatedAmount),
-            "priority": .string(item.priority.rawValue),
-            "note": .string(item.note)
+            "valor_estimado": .from(item.estimatedAmount),
+            "prioridade": .string(item.priority.displayName),
+            "nota": .string(item.note)
         ]
         if let desiredBy = item.desiredBy {
-            object["desired_by"] = .string(desiredBy.formatted(date: .abbreviated, time: .omitted))
+            object["data_desejada"] = .string(desiredBy.formatted(date: .abbreviated, time: .omitted))
             if let relative = desiredBy.cfRelativeDay(now: now) {
-                object["desired_in"] = .string(relative)
+                object["prazo"] = .string(relative)
             }
+        } else {
+            object["prazo"] = .string("sem prazo definido")
         }
-        if let category = item.category { object["category"] = .string(category.name) }
+        if let category = item.category { object["categoria"] = .string(category.name) }
         return object
     }
 
@@ -168,13 +170,27 @@ enum AIToolFormatters {
         ]
     }
 
-    static func monthPaceJSON(_ summary: MonthSummary) -> [String: AIToolJSONValue] {
-        [
+    static func monthPaceJSON(_ summary: MonthSummary, history: SpendingHistoryContext? = nil) -> [String: AIToolJSONValue] {
+        var payload: [String: AIToolJSONValue] = [
             "pace_state": .string(summary.paceState.label),
             "spent_ratio_percent": .double(summary.spentRatio * 100),
             "day_progress_percent": .double(summary.dayProgress * 100),
             "days_remaining": .int(summary.daysRemaining),
             "daily_budget_remaining": .from(summary.dailyBudgetRemaining)
         ]
+        if let history, history.sampleCount >= 2 {
+            payload["historical_months_sampled"] = .int(history.sampleCount)
+            if let average = history.averageMonthlyExpense {
+                payload["average_monthly_expense"] = .from(average)
+            }
+            if let typical = history.typicalExpenseAtCurrentProgress {
+                payload["typical_expense_at_progress"] = .from(typical)
+            }
+            if let projected = history.projectedMonthExpense {
+                payload["projected_month_expense"] = .from(projected)
+            }
+            payload["history_trend"] = .string(history.progressTrend.label)
+        }
+        return payload
     }
 }

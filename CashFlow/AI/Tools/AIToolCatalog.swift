@@ -288,6 +288,13 @@ enum AIToolCatalog {
                 .init(name: "period", type: "string", description: "3m, 6m, 12m ou ytd", required: true),
                 .init(name: "reference_date", type: "string", description: "Data de referência", required: false)
             ]
+        ),
+        AIToolDefinition(
+            name: "preview_write_action",
+            description: "Valida argumentos de uma ação de escrita e retorna o resumo da confirmação, sem criar proposta nem alterar dados. Passe os mesmos parâmetros da ferramenta alvo além de action.",
+            parameters: [
+                .init(name: "action", type: "string", description: "Nome da ferramenta de escrita (ex.: pay_bill, create_transaction)", required: true)
+            ]
         )
     ]
 
@@ -442,6 +449,112 @@ enum AIToolCatalog {
                 .init(name: "account", type: "string", description: "Conta", required: false),
                 .init(name: "date", type: "string", description: "Data", required: false),
                 .init(name: "category", type: "string", description: "Categoria", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "cancel_bill",
+            description: "Cancela conta a pagar pendente (não vale para faturas de cartão). Requer confirmação.",
+            parameters: [
+                .init(name: "bill", type: "string", description: "Nome ou ID da conta", required: true)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "cancel_receivable",
+            description: "Cancela conta a receber pendente. Requer confirmação.",
+            parameters: [
+                .init(name: "receivable", type: "string", description: "Nome ou ID", required: true)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "update_bill",
+            description: "Atualiza conta a pagar pendente. Requer confirmação.",
+            parameters: [
+                .init(name: "bill", type: "string", description: "Nome ou ID", required: true),
+                .init(name: "name", type: "string", description: "Novo nome", required: false),
+                .init(name: "amount", type: "number", description: "Novo valor", required: false),
+                .init(name: "due_date", type: "string", description: "Novo vencimento", required: false),
+                .init(name: "account", type: "string", description: "Conta", required: false),
+                .init(name: "category", type: "string", description: "Categoria", required: false),
+                .init(name: "note", type: "string", description: "Nota", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "update_receivable",
+            description: "Atualiza conta a receber pendente. Requer confirmação.",
+            parameters: [
+                .init(name: "receivable", type: "string", description: "Nome ou ID", required: true),
+                .init(name: "name", type: "string", description: "Novo nome", required: false),
+                .init(name: "amount", type: "number", description: "Novo valor", required: false),
+                .init(name: "expected_date", type: "string", description: "Nova data prevista", required: false),
+                .init(name: "account", type: "string", description: "Conta", required: false),
+                .init(name: "category", type: "string", description: "Categoria", required: false),
+                .init(name: "note", type: "string", description: "Nota", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "update_transaction",
+            description: "Atualiza lançamento existente. Requer confirmação.",
+            parameters: [
+                .init(name: "transaction_id", type: "string", description: "UUID do lançamento", required: true),
+                .init(name: "amount", type: "number", description: "Novo valor", required: false),
+                .init(name: "kind", type: "string", description: "income ou expense", required: false),
+                .init(name: "account", type: "string", description: "Conta", required: false),
+                .init(name: "category", type: "string", description: "Categoria", required: false),
+                .init(name: "date", type: "string", description: "Data", required: false),
+                .init(name: "note", type: "string", description: "Nota", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "delete_transaction",
+            description: "Exclui lançamento. Requer confirmação.",
+            parameters: [
+                .init(name: "transaction_id", type: "string", description: "UUID do lançamento", required: true)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "create_recurring_expense",
+            description: "Cadastra despesa fixa mensal (gera lançamentos ou contas a pagar). Requer confirmação.",
+            parameters: [
+                .init(name: "name", type: "string", description: "Nome", required: true),
+                .init(name: "amount", type: "number", description: "Valor mensal", required: true),
+                .init(name: "day_of_month", type: "integer", description: "Dia do mês (1–31)", required: true),
+                .init(name: "account", type: "string", description: "Conta bancária ou cartão", required: true),
+                .init(name: "category", type: "string", description: "Categoria de despesa", required: true),
+                .init(name: "start_date", type: "string", description: "Início (default hoje)", required: false),
+                .init(name: "requires_confirmation", type: "boolean", description: "Gera contas a pagar em vez de lançamentos automáticos", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "create_recurring_income",
+            description: "Cadastra renda fixa mensal (gera lançamentos ou contas a receber). Requer confirmação.",
+            parameters: [
+                .init(name: "name", type: "string", description: "Nome", required: true),
+                .init(name: "amount", type: "number", description: "Valor mensal", required: true),
+                .init(name: "day_of_month", type: "integer", description: "Dia do mês (1–31)", required: true),
+                .init(name: "account", type: "string", description: "Conta bancária", required: true),
+                .init(name: "category", type: "string", description: "Categoria de receita", required: true),
+                .init(name: "start_date", type: "string", description: "Início (default hoje)", required: false),
+                .init(name: "requires_confirmation", type: "boolean", description: "Gera contas a receber em vez de lançamentos automáticos", required: false)
+            ],
+            isWrite: true
+        ),
+        AIToolDefinition(
+            name: "create_goal",
+            description: "Cria meta financeira com conta dedicada. Requer confirmação.",
+            parameters: [
+                .init(name: "name", type: "string", description: "Nome da meta", required: true),
+                .init(name: "target_amount", type: "number", description: "Valor alvo", required: true),
+                .init(name: "deadline", type: "string", description: "Prazo", required: false),
+                .init(name: "opening_balance", type: "number", description: "Saldo inicial da conta da meta", required: false),
+                .init(name: "notes", type: "string", description: "Notas", required: false)
             ],
             isWrite: true
         )

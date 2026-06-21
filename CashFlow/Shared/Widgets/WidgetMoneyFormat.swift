@@ -1,7 +1,7 @@
 import Foundation
 
 enum WidgetMoneyFormat {
-    private static let locale = Locale(identifier: "pt_BR")
+    nonisolated private static let locale = Locale(identifier: "pt_BR")
 
     static func brl(minorUnits: Int64, hidden: Bool) -> String {
         guard !hidden else { return "••••••" }

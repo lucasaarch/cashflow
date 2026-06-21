@@ -72,7 +72,7 @@ struct HTTPClient: Sendable {
         timeout: TimeInterval? = nil
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 let effectiveTimeout = timeout ?? defaultTimeout
                 AILogger.http.debug("POST stream \(url.absoluteString, privacy: .public) body=\(body.count)B timeout=\(effectiveTimeout, format: .fixed(precision: 0))s")
                 let start = Date()
@@ -87,14 +87,20 @@ struct HTTPClient: Sendable {
                     AILogger.http.debug("POST stream \(url.absoluteString, privacy: .public) opened status=\(status) in \(Date().timeIntervalSince(start), format: .fixed(precision: 2))s")
                     try validate(response: response, data: nil)
                     for try await line in bytes.lines {
+                        try Task.checkCancellation()
                         continuation.yield(line)
                     }
                     AILogger.http.debug("POST stream \(url.absoluteString, privacy: .public) closed after \(Date().timeIntervalSince(start), format: .fixed(precision: 2))s")
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish(throwing: CancellationError())
                 } catch {
                     AILogger.http.error("POST stream \(url.absoluteString, privacy: .public) failed after \(Date().timeIntervalSince(start), format: .fixed(precision: 2))s: \(error.localizedDescription, privacy: .public)")
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }

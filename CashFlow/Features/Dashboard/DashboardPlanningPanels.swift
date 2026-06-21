@@ -8,7 +8,6 @@ struct DashboardProjectionPanel: View {
     let receivables: [Receivable]
     let referenceDate: Date
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     private var pendingBills: [Bill] {
         guard let interval = Calendar.current.dateInterval(of: .month, for: referenceDate) else { return [] }
@@ -34,7 +33,7 @@ struct DashboardProjectionPanel: View {
 
     var body: some View {
         CFPanel {
-            CFPanelSection(title: "Projeção", subtitle: "Caixa hoje + a receber − contas a pagar") {
+            CFPanelSection(title: "Caixa projetado", subtitle: "Disponível hoje + a receber − contas a pagar") {
                 HStack(spacing: 8) {
                     CFStatChip(label: "Disponível", amount: overview.liquidBalance, tint: CFTheme.accent, icon: "building.columns.fill")
                     CFStatChip(label: "A receber", amount: receivablesTotal, tint: CFTheme.income, icon: "tray.and.arrow.down.fill")
@@ -48,7 +47,7 @@ struct DashboardProjectionPanel: View {
                         Text("Saldo projetado")
                             .font(CFTheme.dashboardLabel())
                             .foregroundStyle(CFTheme.textSecondary)
-                        Text(projectedAvailable.brl(masked: privacy.valuesHidden))
+                        Text(projectedAvailable.brl)
                             .font(.title3.weight(.semibold).monospacedDigit())
                             .foregroundStyle(projectedAvailable >= 0 ? CFTheme.income : CFTheme.danger)
                             .lineLimit(1)
@@ -61,7 +60,7 @@ struct DashboardProjectionPanel: View {
                 }
 
                 if summary.projectedBalance != projectedAvailable {
-                    Text("Fluxo do mês (entrou − saiu − previsto): \(summary.projectedBalance.brl(masked: privacy.valuesHidden))")
+                    Text("Fluxo do mês (entrou − saiu − previsto): \(summary.projectedBalance.brl)")
                         .font(CFTheme.dashboardMeta())
                         .foregroundStyle(CFTheme.textSecondary)
                 }

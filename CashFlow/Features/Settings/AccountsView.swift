@@ -3,12 +3,19 @@ import SwiftData
 
 struct AccountsView: View {
     @Environment(\.modelContext) private var modelContext
+    #if os(macOS)
+    @EnvironmentObject private var spotlightNavigation: SpotlightNavigationState
+    #endif
     @Query(sort: [SortDescriptor(\Account.sortOrder)]) private var accounts: [Account]
     @Query private var transactions: [Transaction]
 
     @State private var showingAdd = false
     @State private var editingAccount: Account?
     @State private var invoiceAccount: Account?
+    #if os(macOS)
+    @State private var highlightedAccountID: UUID?
+    @State private var spotlightFocusTask: Task<Void, Never>?
+    #endif
 
     var activeAccounts: [Account] {
         accounts.filter { !$0.isArchived }
@@ -43,15 +50,8 @@ struct AccountsView: View {
             }
         }
         .navigationTitle("Contas")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Nova conta", systemImage: "plus")
-                }
-                .help("Nova conta")
-            }
+        .detailToolbarAdd(help: "Nova conta") {
+            showingAdd = true
         }
         .sheet(isPresented: $showingAdd) {
             AccountSheet()
@@ -62,6 +62,7 @@ struct AccountsView: View {
         .sheet(item: $invoiceAccount) { account in
             CardInvoiceSheet(account: account)
         }
+        .cfGlassDetailChrome()
     }
 
     private var emptyState: some View {
@@ -75,40 +76,39 @@ struct AccountsView: View {
         }
     }
 
-    private var accountList: some View {
-        CFScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(groupOrder, id: \.self) { kind in
-                    let kindAccounts = activeAccounts(of: kind)
-                    if !kindAccounts.isEmpty {
-                        kindSection(kind: kind, accounts: kindAccounts)
-                    }
-                }
-
-                if !archivedAccounts.isEmpty {
-                    archivedSection
-                }
-            }
-            .padding(20)
+    private var visibleAccountSections: [(AccountKind, [Account])] {
+        groupOrder.compactMap { kind in
+            let items = activeAccounts(of: kind)
+            return items.isEmpty ? nil : (kind, items)
         }
-        .cfPageBackground()
     }
 
-    private func kindSection(kind: AccountKind, accounts: [Account]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(sectionTitle(for: kind))
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
+    private var accountList: some View {
+        ScrollViewReader { proxy in
+            CFGlassPage {
+                CFGlassPageStack {
+                    ForEach(Array(visibleAccountSections.enumerated()), id: \.element.0) { index, section in
+                        kindSection(
+                            kind: section.0,
+                            accounts: section.1,
+                            staggerIndex: index
+                        )
+                    }
 
-            ForEach(accounts) { account in
-                let balance = account.currentBalance(considering: transactions)
-                CFHoverRow {
-                    accountRowContent(account, balance: balance)
+                    if !archivedAccounts.isEmpty {
+                        archivedSection(staggerIndex: visibleAccountSections.count)
+                    }
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
+            }
+            #if os(macOS)
+            .spotlightScrollTarget(
+                navigation: spotlightNavigation,
+                kind: .account,
+                highlightedID: $highlightedAccountID,
+                focusTask: $spotlightFocusTask,
+                proxy: proxy,
+                onReveal: { id in
+                    guard let account = accounts.first(where: { $0.id == id }) else { return }
                     switch account.kind {
                     case .creditCard:
                         invoiceAccount = account
@@ -116,6 +116,29 @@ struct AccountsView: View {
                         editingAccount = account
                     }
                 }
+            )
+            #endif
+        }
+    }
+
+    private func kindSection(kind: AccountKind, accounts: [Account], staggerIndex: Int) -> some View {
+        CFGlassSection(title: sectionTitle(for: kind), staggerIndex: staggerIndex) {
+            CFGlassEnumeratedPanel(items: accounts) { account, _ in
+                let balance = account.currentBalance(considering: transactions)
+                CFGlassRowButton {
+                    switch account.kind {
+                    case .creditCard:
+                        invoiceAccount = account
+                    case .bank, .investment, .goal:
+                        editingAccount = account
+                    }
+                } label: {
+                    accountRowContent(account, balance: balance)
+                }
+                .id(account.id)
+                #if os(macOS)
+                .spotlightFocused(highlightedAccountID == account.id)
+                #endif
                 .contextMenu {
                     if account.kind == .creditCard {
                         Button {
@@ -139,51 +162,31 @@ struct AccountsView: View {
         }
     }
 
-    private var archivedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Arquivadas")
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-
-            ForEach(archivedAccounts) { account in
-                CFHoverRow {
-                    HStack(spacing: 12) {
-                        accountBadge(account, muted: true)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(account.name)
-                                .font(CFTheme.body())
-                                .foregroundStyle(CFTheme.textSecondary)
-                            Text(account.kind.displayName)
-                                .font(CFTheme.caption())
-                                .foregroundStyle(CFTheme.textTertiary)
-                        }
-                        Spacer()
-                        Button("Restaurar") {
-                            account.isArchived = false
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-            }
+    private func archivedSection(staggerIndex: Int) -> some View {
+        CFGlassArchiveSection(
+            title: "Arquivadas",
+            staggerIndex: staggerIndex,
+            items: archivedAccounts,
+            systemName: { $0.symbolName },
+            itemTitle: { $0.name },
+            itemSubtitle: { $0.kind.displayName }
+        ) { account in
+            account.isArchived = false
         }
     }
 
     private func accountRowContent(_ account: Account, balance: Decimal) -> some View {
         HStack(spacing: 12) {
             accountBadge(account, muted: false)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(account.name)
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
+                    .font(.body)
                 Text(accountSubtitle(account))
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 2) {
                 CFAnimatedAmount(
                     amount: displayedBalance(for: account, balance: balance),
                     font: .callout.monospacedDigit().weight(.medium),
@@ -191,11 +194,11 @@ struct AccountsView: View {
                 )
                 Text(balanceCaption(for: account, balance: balance))
                     .font(.caption2)
-                    .foregroundStyle(CFTheme.textSecondary)
+                    .foregroundStyle(.secondary)
             }
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(CFTheme.textTertiary)
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -251,7 +254,7 @@ struct AccountsView: View {
 
     private func accountBadge(_ account: Account, muted: Bool) -> some View {
         let tint = muted ? CFTheme.textSecondary : Color(hex: account.colorHex)
-        return CFIconBadge(symbolName: account.symbolName, tint: tint, size: 30)
+        return CFGlassSymbol(systemName: account.symbolName, tint: tint)
     }
 }
 
@@ -265,7 +268,7 @@ private struct AccountSheet: View {
     @State private var name: String
     @State private var kind: AccountKind
     @State private var symbolName: String
-    @State private var color: Color
+    @State private var colorHex: String
     @State private var openingBalance: Decimal
     @State private var openingDate: Date
     @State private var closingDay: Int
@@ -277,7 +280,7 @@ private struct AccountSheet: View {
         let initialKind = editing?.kind ?? .bank
         _kind = State(initialValue: initialKind)
         _symbolName = State(initialValue: editing?.symbolName ?? initialKind.defaultSymbolName)
-        _color = State(initialValue: editing.map { Color(hex: $0.colorHex) } ?? Color(hex: "#3B82F6"))
+        _colorHex = State(initialValue: editing?.colorHex ?? "#3B82F6")
         // For credit cards, the stored balance is negative (debt). Show it as a
         // positive number in the editor so the user types what they intuitively owe.
         let rawBalance = editing?.openingBalance ?? 0
@@ -332,14 +335,6 @@ private struct AccountSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(
-                title: balanceTitle,
-                amount: $openingBalance
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -362,80 +357,89 @@ private struct AccountSheet: View {
                 dueDay = 0
             }
         }
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                sectionGroup(title: "Identificação") {
-                    CFInputField(label: "Nome", text: $name, placeholder: namePlaceholder)
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(title: balanceTitle, amount: $openingBalance)
 
-                    panelDivider
-
-                    panelRow("Tipo") {
-                        CFSelectField(
-                            selection: $kind,
-                            options: AccountKind.selectOptions,
-                            disabled: hasUsage
-                        )
-                    }
-
-                    if hasUsage {
-                        panelDivider
-                        Text("Tipo bloqueado: há lançamentos nessa conta. Arquive e crie uma nova se precisar mudar.")
-                            .font(CFTheme.caption())
-                            .foregroundStyle(CFTheme.textSecondary)
-                            .padding(.vertical, 4)
-                    }
-                }
-
-                sectionGroup(title: "Ponto de partida", footnote: balanceHint) {
-                    panelRow("Usando desde") {
-                        DateField(date: $openingDate)
-                    }
-                }
-
-                if kind == .creditCard {
-                    sectionGroup(title: "Ciclo da fatura", footnote: billingHint) {
-                        panelRow("Fechamento") {
-                            HStack(spacing: 4) {
-                                Text("dia")
-                                    .font(CFTheme.caption())
-                                    .foregroundStyle(CFTheme.textTertiary)
-                                DayOfMonthField(day: $closingDay)
+                    CFGlassFormPanel(title: "Identificação") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Nome") {
+                                TextField(namePlaceholder, text: $name)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
                             }
-                        }
-
-                        panelDivider
-
-                        panelRow("Vencimento") {
-                            HStack(spacing: 4) {
-                                Text("dia")
-                                    .font(CFTheme.caption())
-                                    .foregroundStyle(CFTheme.textTertiary)
-                                DayOfMonthField(day: $dueDay)
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Tipo") {
+                                CFSelectField(
+                                    selection: $kind,
+                                    options: AccountKind.selectOptions,
+                                    disabled: hasUsage
+                                )
+                            }
+                            if hasUsage {
+                                CFGlassPanelDivider()
+                                Text("Tipo bloqueado: há lançamentos nessa conta. Arquive e crie uma nova se precisar mudar.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                    .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
                             }
                         }
                     }
-                }
 
-                sectionGroup(title: "Aparência") {
-                    panelRow("Ícone") {
-                        IconPickerField(symbolName: $symbolName, tint: color)
+                    CFGlassSection(title: "Ponto de partida", subtitle: balanceHint) {
+                        CFGlassPanel {
+                            CFGlassLabeledField(label: "Usando desde") {
+                                DateField(date: $openingDate)
+                            }
+                        }
                     }
 
-                    panelDivider
+                    if kind == .creditCard {
+                        CFGlassSection(title: "Ciclo da fatura", subtitle: billingHint) {
+                            CFGlassPanel {
+                                VStack(spacing: 0) {
+                                    CFGlassLabeledField(label: "Fechamento") {
+                                        HStack(spacing: 4) {
+                                            Text("dia")
+                                                .font(.callout)
+                                                .foregroundStyle(.secondary)
+                                            DayOfMonthField(day: $closingDay)
+                                        }
+                                    }
+                                    CFGlassPanelDivider()
+                                    CFGlassLabeledField(label: "Vencimento") {
+                                        HStack(spacing: 4) {
+                                            Text("dia")
+                                                .font(.callout)
+                                                .foregroundStyle(.secondary)
+                                            DayOfMonthField(day: $dueDay)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
-                    panelRow("Cor") {
-                        ColorPickerField(color: $color)
+                    CFGlassFormPanel(title: "Aparência") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Ícone") {
+                                IconPickerField(symbolName: $symbolName, tint: Color(hex: colorHex))
+                            }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Cor") {
+                                ColorPickerField(colorHex: $colorHex)
+                            }
+                        }
                     }
                 }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -487,25 +491,20 @@ private struct AccountSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Arquivar", icon: "archivebox", style: .destructive) {
+                Button(role: .destructive) {
                     archive()
+                } label: {
+                    Label("Arquivar", systemImage: "archivebox")
                 }
+                .cfGlassDestructiveButton()
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-            .allowsHitTesting(!name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func save() {
@@ -518,7 +517,7 @@ private struct AccountSheet: View {
         if let editing {
             editing.name = trimmedName
             editing.symbolName = finalSymbol
-            editing.colorHex = color.hexString
+            editing.colorHex = colorHex
             editing.openingBalance = storedBalance
             editing.openingDate = normalizedDate
             editing.closingDay = kind == .creditCard ? closingDay : 0
@@ -531,7 +530,7 @@ private struct AccountSheet: View {
             let account = Account(
                 name: trimmedName,
                 kind: kind,
-                colorHex: color.hexString,
+                colorHex: colorHex,
                 symbolName: finalSymbol,
                 sortOrder: nextSort,
                 openingBalance: storedBalance,

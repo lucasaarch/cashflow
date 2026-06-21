@@ -52,11 +52,6 @@ struct AddWishlistItemSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(title: "Valor estimado", amount: $amount, amountColor: CFTheme.expense)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -70,46 +65,51 @@ struct AddWishlistItemSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Identificação") {
-                    CFInputField(label: "Nome", text: $name, placeholder: "Fone, calça nova…")
-                    labeledRow("Prioridade") { priorityPicker }
-                    labeledRow("Categoria") { categoryPicker }
-                }
-                section(title: "Prazo") {
-                    labeledRow("Data desejada") {
-                        Toggle("", isOn: $hasDesiredBy)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                    }
-                    if hasDesiredBy {
-                        labeledRow("Desejo até") {
-                            DateField(date: $desiredBy)
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(title: "Valor estimado", amount: $amount, amountColor: CFTheme.expense)
+
+                    CFGlassFormPanel(title: "Identificação") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Nome") {
+                                TextField("Fone, calça nova…", text: $name)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Prioridade") { priorityPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Categoria") { categoryPicker }
                         }
                     }
+
+                    CFGlassFormPanel(title: "Prazo") {
+                        VStack(spacing: 0) {
+                            CFGlassToggleRow(title: "Data desejada", isOn: $hasDesiredBy)
+                            if hasDesiredBy {
+                                CFGlassPanelDivider()
+                                CFGlassLabeledField(label: "Desejo até") {
+                                    DateField(date: $desiredBy)
+                                }
+                            }
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Notas") {
+                        TextField("Link da loja, modelo, promoção…", text: $note, axis: .vertical)
+                            .lineLimit(2...4)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                            .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
+                    }
                 }
-                section(title: "Notas") {
-                    TextField("Link da loja, modelo, promoção…", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.plain)
-                        .font(CFTheme.body())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(CFTheme.surfaceElevated.opacity(0.45))
-                        )
-                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -166,29 +166,24 @@ struct AddWishlistItemSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
+                Button(role: .destructive) {
                     if let editing {
                         modelContext.delete(editing)
                     }
                     dismiss()
+                } label: {
+                    Label("Excluir", systemImage: "trash")
                 }
+                .cfGlassDestructiveButton()
                 .help("Excluir desejo")
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func save() {

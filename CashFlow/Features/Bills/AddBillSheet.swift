@@ -60,17 +60,12 @@ struct AddBillSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(title: "Valor previsto", amount: $amount)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
         }
         .cfAdaptiveSheetNavigation()
-        .cfAdaptiveSheetFrame(width: 480, height: 540)
+        .cfAdaptiveSheetFrame(width: 480, height: 560)
         .cfCompactSheetToolbar(
             title: isEditing ? "Editar conta" : "Nova conta a pagar",
             saveDisabled: !isValid,
@@ -78,39 +73,45 @@ struct AddBillSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
     }
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: "Identificação") {
-                    CFInputField(label: "Nome", text: $name, placeholder: "IPTU, Boleto…")
-                    labeledRow("Categoria") { categoryPicker }
-                    labeledRow("Conta") { accountPicker }
-                }
-                section(title: "Vencimento") {
-                    labeledRow("Vence em") {
-                        DateField(date: $dueDate)
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(title: "Valor previsto", amount: $amount)
+
+                    CFGlassFormPanel(title: "Identificação") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Nome") {
+                                TextField("IPTU, Boleto…", text: $name)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Categoria") { categoryPicker }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Conta") { accountPicker }
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Vencimento") {
+                        CFGlassLabeledField(label: "Vence em") {
+                            DateField(date: $dueDate)
+                        }
+                    }
+
+                    CFGlassFormPanel(title: "Nota") {
+                        TextField("Opcional", text: $note, axis: .vertical)
+                            .lineLimit(2...4)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                            .padding(.vertical, CFGlassMetrics.rowVerticalPadding)
                     }
                 }
-                section(title: "Nota") {
-                    TextField("Opcional", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.plain)
-                        .font(CFTheme.body())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(CFTheme.surfaceElevated.opacity(0.45))
-                        )
-                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
     }
@@ -147,60 +148,26 @@ struct AddBillSheet: View {
         )
     }
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
-            VStack(spacing: 6) {
-                content()
-            }
-        }
-    }
-
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textSecondary)
-            Spacer(minLength: 8)
-            content()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
-    }
-
     private var footer: some View {
-        HStack(spacing: 10) {
+        CFGlassSheetFooter(
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        ) {
             if isEditing {
-                CFPillButton(title: "Excluir", icon: "trash", iconOnly: true, style: .destructive) {
+                Button(role: .destructive) {
                     if let editing {
                         BillNotifications.cancel(for: editing)
                         modelContext.delete(editing)
                     }
                     dismiss()
+                } label: {
+                    Label("Excluir", systemImage: "trash")
                 }
+                .cfGlassDestructiveButton()
                 .help("Excluir conta a pagar")
             }
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Salvar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private func save() {

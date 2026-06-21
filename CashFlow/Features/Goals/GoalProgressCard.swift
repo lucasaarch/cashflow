@@ -5,7 +5,6 @@ struct GoalProgressCard: View {
     var goal: FinancialGoal?
     var compact: Bool = false
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     private var tint: Color {
         if let goal { return Color(hex: goal.colorHex) }
@@ -19,21 +18,20 @@ struct GoalProgressCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             HStack(spacing: 10) {
-                CFIconBadge(symbolName: symbol, tint: tint, size: compact ? 26 : 30)
+                CFGlassSymbol(systemName: symbol, tint: tint, size: compact ? 26 : 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(snapshot.name)
-                        .font(compact ? .callout.weight(.medium) : CFTheme.body())
-                        .foregroundStyle(CFTheme.textPrimary)
+                        .font(compact ? .callout.weight(.medium) : .body)
                     Text(progressCaption)
-                        .font(CFTheme.caption())
-                        .foregroundStyle(CFTheme.textSecondary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if !compact {
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(snapshot.currentAmount.brl(masked: privacy.valuesHidden))
+                        Text(snapshot.currentAmount.brl)
                             .font(.callout.monospacedDigit().weight(.semibold))
-                        Text("de \(snapshot.targetAmount.brl(masked: privacy.valuesHidden))")
+                        Text("de \(snapshot.targetAmount.brl)")
                             .font(.caption2)
                             .foregroundStyle(CFTheme.textTertiary)
                     }
@@ -47,7 +45,7 @@ struct GoalProgressCard: View {
             )
 
             if let monthlyNeeded = snapshot.monthlyNeeded, !snapshot.isCompleted {
-                Text("Faltam \(snapshot.remaining.brl(masked: privacy.valuesHidden)) · \(monthlyNeeded.brl(masked: privacy.valuesHidden))/mês até a meta")
+                Text("Faltam \(snapshot.remaining.brl) · \(monthlyNeeded.brl)/mês até a meta")
                     .font(.caption2)
                     .foregroundStyle(CFTheme.textTertiary)
             }

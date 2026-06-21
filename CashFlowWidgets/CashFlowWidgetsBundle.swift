@@ -5,5 +5,6 @@ import SwiftUI
 struct CashFlowWidgetsBundle: WidgetBundle {
     var body: some Widget {
         CashFlowOverviewWidget()
+        CashFlowNextBillWidget()
     }
 }

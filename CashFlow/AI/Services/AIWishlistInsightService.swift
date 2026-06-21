@@ -9,9 +9,11 @@ enum WishlistInsightPrompts {
 
     Regras:
     - Identifique itens que cabem na folga discrecional DESTE mês (saldo realizado positivo após obrigações).
-    - Destaque itens com desired_by ou desired_in próximo.
+    - Destaque itens com prazo ou data desejada próximos (use o campo "prazo" dos dados).
     - Se o fluxo estiver apertado, diga para esperar — NÃO empurre compras mesmo de itens urgentes.
+    - Use a tendência vs. histórico de gastos quando disponível para calibrar o timing.
     - Não invente valores; use apenas os dados fornecidos.
+    - Linguagem 100% em português natural para o usuário. NUNCA cite nomes de campos técnicos ou em inglês (ex.: desired_by, desired_in, priority, estimated_amount). Diga "sem prazo definido", "prioridade alta", "até semana que vem" etc.
     """
 }
 

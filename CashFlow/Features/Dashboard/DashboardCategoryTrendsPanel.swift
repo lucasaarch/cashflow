@@ -4,7 +4,6 @@ struct DashboardCategoryTrendsPanel: View {
     let currentSummary: MonthSummary
     let previousSummary: MonthSummary
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     private var rows: [CategoryTrendRow] {
         let previousByID = Dictionary(uniqueKeysWithValues: previousSummary.expensesByCategory.map { ($0.category.id, $0) })
@@ -55,7 +54,7 @@ struct DashboardCategoryTrendsPanel: View {
                     .foregroundStyle(CFTheme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text(row.deltaLabel(masked: privacy.valuesHidden))
+                Text(row.deltaLabel)
                     .font(CFTheme.dashboardAmount())
                     .foregroundStyle(row.tint)
                     .lineLimit(1)
@@ -64,9 +63,9 @@ struct DashboardCategoryTrendsPanel: View {
             CategoryTrendBars(row: row)
 
             HStack(spacing: 8) {
-                Text("Anterior \(row.previous.brl(masked: privacy.valuesHidden))")
+                Text("Anterior \(row.previous.brl)")
                 Spacer(minLength: 8)
-                Text("Atual \(row.current.brl(masked: privacy.valuesHidden))")
+                Text("Atual \(row.current.brl)")
             }
             .font(CFTheme.dashboardMeta().monospacedDigit())
             .foregroundStyle(CFTheme.textSecondary)
@@ -120,7 +119,7 @@ private struct CategoryTrendRow: Identifiable {
         return CFTheme.textSecondary
     }
 
-    func deltaLabel(masked: Bool) -> String {
+    var deltaLabel: String {
         if previous > 0 {
             let percent = NSDecimalNumber(decimal: abs(delta) / previous * 100).intValue
             let direction = delta >= 0 ? "+" : "-"

@@ -1,58 +1,9 @@
 import SwiftUI
 
-struct DashboardAnalysisPanel: View {
-    let categoryAggregates: [MonthSummary.CategoryAggregate]
-    let accountAggregates: [MonthSummary.AccountAggregate]
-    let totalExpense: Decimal
-
-    private var hasCategories: Bool { !categoryAggregates.isEmpty }
-    private var hasAccounts: Bool { !accountAggregates.isEmpty }
-
-    var shouldShow: Bool { hasCategories || hasAccounts }
-
-    var body: some View {
-        CFPanel {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 20) {
-                    if hasCategories {
-                        CategoryBreakdownContent(
-                            aggregates: categoryAggregates,
-                            totalExpense: totalExpense
-                        )
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    if hasCategories && hasAccounts {
-                        Divider()
-                    }
-                    if hasAccounts {
-                        AccountBreakdownContent(aggregates: accountAggregates)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    if hasCategories {
-                        CategoryBreakdownContent(
-                            aggregates: categoryAggregates,
-                            totalExpense: totalExpense
-                        )
-                    }
-                    if hasCategories && hasAccounts {
-                        CFPanelDivider()
-                    }
-                    if hasAccounts {
-                        AccountBreakdownContent(aggregates: accountAggregates)
-                    }
-                }
-            }
-        }
-    }
-}
-
 struct CategoryBreakdownContent: View {
     let aggregates: [MonthSummary.CategoryAggregate]
     let totalExpense: Decimal
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     private var visible: [MonthSummary.CategoryAggregate] {
         Array(aggregates.prefix(6))
@@ -88,7 +39,7 @@ struct CategoryBreakdownContent: View {
                     .font(.callout.weight(isTop ? .semibold : .regular))
                     .lineLimit(1)
                 Spacer()
-                Text(item.total.brl(masked: privacy.valuesHidden))
+                Text(item.total.brl)
                     .font(CFTheme.dashboardAmount())
                 Text(percentFormatter.string(from: NSNumber(value: share)) ?? "")
                     .font(CFTheme.dashboardMeta())
@@ -121,7 +72,6 @@ struct CategoryBreakdownContent: View {
 struct AccountBreakdownContent: View {
     let aggregates: [MonthSummary.AccountAggregate]
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
         CFPanelSection(title: "Por conta", subtitle: "Forma de pagamento") {
@@ -146,7 +96,7 @@ struct AccountBreakdownContent: View {
                 .font(.callout)
                 .lineLimit(1)
             Spacer()
-            Text(item.total.brl(masked: privacy.valuesHidden))
+            Text(item.total.brl)
                 .font(CFTheme.dashboardAmount())
                 .foregroundStyle(isCard ? CFTheme.debt : CFTheme.textPrimary)
         }
@@ -154,7 +104,7 @@ struct AccountBreakdownContent: View {
     }
 }
 
-// Legacy wrappers for any external use
+// Card wrappers for dashboard and previews.
 struct CategoryBreakdownCard: View {
     let aggregates: [MonthSummary.CategoryAggregate]
     let totalExpense: Decimal

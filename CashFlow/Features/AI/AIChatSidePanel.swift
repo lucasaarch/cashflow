@@ -8,6 +8,11 @@ enum AIChatPanelPresentation {
 
 struct AIChatSidePanel: View {
     private static let bottomAnchorID = "ai-chat-bottom-anchor"
+    /// Conteúdo abaixo dos botões da toolbar nativa — o fundo do inspector vai até o topo.
+    private static let inlineToolbarClearance: CGFloat = 52
+    private static let conversationTopPaddingSheet: CGFloat = 12
+    private static let conversationBottomPadding: CGFloat = 16
+    private static let sendButtonSize: CGFloat = 32
 
     @EnvironmentObject private var aiService: AIService
     @EnvironmentObject private var chatPanelState: AIChatPanelState
@@ -28,8 +33,11 @@ struct AIChatSidePanel: View {
     @Query(sort: [SortDescriptor(\Category.sortOrder)]) private var categories: [Category]
 
     @State private var isSending = false
-    @State private var typewriterMessageID: UUID?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var stopButtonPulse = false
     @State private var typewriterScrollTick = 0
+    @State private var pendingSettleMessageID: UUID?
+    @State private var settledRevealMessageIDs: Set<UUID> = []
     @State private var errorMessage: String?
     @State private var showingHistory = false
     @State private var showDeleteConversationAlert = false
@@ -44,7 +52,10 @@ struct AIChatSidePanel: View {
         "O que tenho pra pagar essa semana?"
     ]
 
-    init(aiService: AIService, presentation: AIChatPanelPresentation = .inlineColumn) {
+    init(
+        aiService: AIService,
+        presentation: AIChatPanelPresentation = .inlineColumn
+    ) {
         chatService = AIChatService(aiService: aiService)
         self.presentation = presentation
     }
@@ -62,36 +73,21 @@ struct AIChatSidePanel: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            if aiService.configuration.isReady {
-                messagesList
-                    .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-                inputBar
+        Group {
+            if presentation == .sheet {
+                panelContent.cfGlassSheetChrome()
             } else {
-                setupCTA
+                panelContent
             }
         }
-        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [CFTheme.surfacePrimary, CFTheme.surfacePrimary.opacity(0.96)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
         .onAppear {
-            if chatPanelState.selectedConversationID == nil {
-                chatPanelState.selectedConversationID = conversations.first?.id
+            Task { @MainActor in
+                reconcileSelectedConversation()
             }
         }
         .onChange(of: conversations.count) { _, _ in
-            guard let currentID = chatPanelState.selectedConversationID else {
-                chatPanelState.selectedConversationID = conversations.first?.id
-                return
-            }
-            if !conversations.contains(where: { $0.id == currentID }) {
-                chatPanelState.selectedConversationID = conversations.first?.id
+            Task { @MainActor in
+                reconcileSelectedConversation()
             }
         }
         .alert("Apagar esta conversa?", isPresented: $showDeleteConversationAlert) {
@@ -104,19 +100,58 @@ struct AIChatSidePanel: View {
         }
         .onChange(of: chatPanelState.insightLaunchToken) { _, token in
             guard token != nil else { return }
-            Task { await handleInsightLaunchIfNeeded() }
+            beginSend { await handleInsightLaunchIfNeeded() }
         }
         .onChange(of: chatPanelState.isOpen) { _, isOpen in
             guard isOpen, chatPanelState.insightLaunchToken != nil else { return }
-            Task { await handleInsightLaunchIfNeeded() }
+            beginSend { await handleInsightLaunchIfNeeded() }
         }
     }
 
-    // MARK: - Header
+    private var panelContent: some View {
+        VStack(spacing: 0) {
+            if presentation == .sheet {
+                sheetHeader
+            }
+            if aiService.configuration.isReady {
+                conversationBody
+            } else {
+                setupCTA
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, presentation == .inlineColumn ? Self.inlineToolbarClearance : 0)
+    }
 
-    private var header: some View {
+    private var conversationTopPadding: CGFloat {
+        presentation == .inlineColumn ? 0 : Self.conversationTopPaddingSheet
+    }
+
+    private var conversationBody: some View {
+        VStack(spacing: 0) {
+            Group {
+                if sortedMessages.isEmpty {
+                    emptyStateLayout
+                } else {
+                    messagesList
+                }
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+
+            inputBar
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Header (sheet)
+
+    private var sheetHeader: some View {
         HStack(spacing: 12) {
-            CFIconBadge(symbolName: "sparkles", tint: CFTheme.accent, size: 34)
+            CFGlassSymbol(
+                systemName: AIAssistantIdentity.settingsSymbolName,
+                tint: CFTheme.accent,
+                size: 34
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(AIAssistantIdentity.name)
@@ -129,116 +164,60 @@ struct AIChatSidePanel: View {
 
             Spacer(minLength: 0)
 
-            if presentation == .sheet {
-                headerIconButton(symbol: "xmark", help: "Fechar") {
-                    chatPanelState.close()
-                }
+            inlineToolbarButton(symbol: "xmark", help: "Fechar") {
+                chatPanelState.close()
             }
 
-            headerIconButton(symbol: "plus", help: "Nova conversa") {
+            inlineToolbarButton(symbol: "plus", help: "Nova conversa") {
                 createConversation()
             }
 
             if selectedConversation != nil {
-                headerIconButton(symbol: "trash", help: "Apagar conversa atual") {
+                inlineToolbarButton(symbol: "trash", help: "Apagar conversa atual") {
                     showDeleteConversationAlert = true
                 }
             }
 
-            historyButton
+            sheetHistoryButton
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(CFTheme.surfacePrimary.opacity(0.85))
+        .padding(.bottom, 14)
+        .padding(.top, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
-            Divider().opacity(0.5)
+            CFGlassPanelDivider()
         }
     }
 
-    private func headerIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    private func inlineToolbarButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CFTheme.textSecondary)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
         }
-        .buttonStyle(.plain)
+        .cfGlassToolbarIconButton()
         .help(help)
     }
 
     /// Clock icon doubles as the picker trigger — tapping it opens the conversation
     /// list popover directly (no intermediate sheet).
-    private var historyButton: some View {
+    private var sheetHistoryButton: some View {
         Button {
             showingHistory = true
         } label: {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CFTheme.textSecondary)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(CFTheme.textTertiary.opacity(0.12)))
         }
-        .buttonStyle(.plain)
+        .cfGlassToolbarIconButton()
         .help("Histórico de conversas")
         .disabled(conversations.isEmpty)
         .cfAdaptivePicker(isPresented: $showingHistory, arrowEdge: .top, sheetTitle: "Histórico") {
-            historyPickerContent
-        }
-    }
-
-    private var historyPickerContent: some View {
-        ScrollView {
-            VStack(spacing: 6) {
-                ForEach(conversations) { conversation in
-                    conversationRow(conversation)
+            AIChatConversationHistoryPicker(
+                conversations: conversations,
+                selectedConversationID: chatPanelState.selectedConversationID,
+                onSelect: { conversation in
+                    chatPanelState.selectedConversationID = conversation.id
+                    showingHistory = false
                 }
-            }
-            .padding(12)
-            .cfScrollContent()
+            )
         }
-        .cfScrollChrome()
-        .frame(width: 280, height: 320)
-    }
-
-    private func conversationRow(_ conversation: ChatConversation) -> some View {
-        let isSelected = chatPanelState.selectedConversationID == conversation.id
-
-        return Button {
-            chatPanelState.selectedConversationID = conversation.id
-            showingHistory = false
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left")
-                    .font(.system(size: 15, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(CFTheme.accent)
-                    .frame(width: 24)
-                Text(conversation.title)
-                    .font(CFTheme.body())
-                    .foregroundStyle(CFTheme.textPrimary)
-                    .lineLimit(1)
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CFTheme.accent)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? CFTheme.accent.opacity(0.18) : CFTheme.surfaceElevated.opacity(0.4))
-                    .overlay {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(CFTheme.accent.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Messages
@@ -246,14 +225,10 @@ struct AIChatSidePanel: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    if sortedMessages.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(Array(sortedMessages.enumerated()), id: \.element.id) { index, message in
-                            messageRow(message, index: index)
-                                .id(message.id)
-                        }
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(sortedMessages.enumerated()), id: \.element.id) { index, message in
+                        messageRow(message, index: index)
+                            .id(message.id)
                     }
 
                     if let errorMessage {
@@ -264,85 +239,99 @@ struct AIChatSidePanel: View {
                         writeConfirmationCard(pending)
                     }
 
-                    if let status = chatPanelState.toolStatusMessage, isSending {
-                        toolStatusBanner(status)
-                    }
-
                     Color.clear
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.top, conversationTopPadding)
+                .padding(.bottom, Self.conversationBottomPadding)
                 .cfScrollContent()
             }
             .cfScrollChrome()
+            .clipped()
             .onAppear {
                 Task { await scrollToBottomWhenReady(proxy) }
             }
             .task(id: chatPanelState.selectedConversationID) {
+                resetConversationPresentationState()
                 await scrollToBottomWhenReady(proxy)
             }
             .onChange(of: chatPanelState.isOpen) { _, isOpen in
                 guard isOpen else { return }
                 Task { await scrollToBottomWhenReady(proxy) }
             }
-            .onChange(of: sortedMessages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: sortedMessages.last?.content) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: typewriterScrollTick) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: chatPanelState.liveToolActivities.count) { _, _ in
+                Task { @MainActor in scrollToBottom(proxy) }
+            }
+            .onChange(of: sortedMessages.count) { _, _ in
+                Task { @MainActor in scrollToBottom(proxy) }
+            }
+            .onChange(of: sortedMessages.last?.content) { _, _ in
+                Task { @MainActor in scrollToBottom(proxy) }
+            }
+            .onChange(of: typewriterScrollTick) { _, _ in
+                Task { @MainActor in scrollToBottom(proxy) }
+            }
         }
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Pergunte qualquer coisa")
-                    .font(.headline)
-                    .foregroundStyle(CFTheme.textPrimary)
-                Text("\(AIAssistantIdentity.name) conhece seus lançamentos, contas e metas — converse no seu ritmo.")
-                    .font(.callout)
-                    .foregroundStyle(CFTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private var emptyStateLayout: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Sugestões")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CFTheme.textTertiary)
-                    .textCase(.uppercase)
-
-                ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
-                    Button {
-                        chatPanelState.draft = suggestion
-                        Task { await send() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkle")
-                                .font(.caption)
-                                .foregroundStyle(CFTheme.accent)
-                            Text(suggestion)
-                                .font(.callout)
-                                .foregroundStyle(CFTheme.textPrimary)
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(CFTheme.textTertiary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(CFTheme.surfaceElevated.opacity(0.4))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .cfStaggerAppear(index: index)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Pergunte qualquer coisa")
+                        .font(CFTheme.chatHeadline())
+                        .foregroundStyle(CFTheme.textPrimary)
+                    Text("\(AIAssistantIdentity.name) conhece seus lançamentos, contas e metas — converse no seu ritmo.")
+                        .font(CFTheme.chatBody())
+                        .foregroundStyle(CFTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                emptyStateSuggestions
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyStateSuggestions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sugestões")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CFTheme.textTertiary)
+                .textCase(.uppercase)
+
+            ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+                Button {
+                    chatPanelState.draft = suggestion
+                    beginSend { await send() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkle")
+                            .font(.caption2)
+                            .foregroundStyle(CFTheme.accent)
+                        Text(suggestion)
+                            .font(CFTheme.chatBody())
+                            .foregroundStyle(CFTheme.textPrimary)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CFTheme.textTertiary)
+                    }
+                    .cfChatSuggestionChipGlass()
+                }
+                .buttonStyle(.plain)
+                .cfStaggerAppear(index: index)
             }
         }
-        .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -351,67 +340,107 @@ struct AIChatSidePanel: View {
             if message.role == .user {
                 userBubble(message)
             } else {
-                assistantBubble(message)
+                VStack(alignment: .leading, spacing: 8) {
+                    toolActivitiesView(for: message)
+                    assistantBubble(message)
+                }
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .cfStaggerAppear(index: index)
+    }
+
+    private func toolActivitiesView(for message: ChatMessage) -> some View {
+        let activities = resolvedToolActivities(for: message)
+        return AIToolActivityStack(activities: activities)
+    }
+
+    private func resolvedToolActivities(for message: ChatMessage) -> [AIToolActivityRecord] {
+        if isSending,
+           message.role == .assistant,
+           message.id == sortedMessages.last?.id,
+           !chatPanelState.liveToolActivities.isEmpty {
+            return chatPanelState.visibleToolActivities(chatPanelState.liveToolActivities)
+        }
+        let cached = chatPanelState.toolActivities(for: message.id)
+        if !cached.isEmpty { return chatPanelState.visibleToolActivities(cached) }
+        return chatPanelState.visibleToolActivities(message.sortedToolActivityRecords)
+    }
+
+    private func finalizeWriteProposalTrace() {
+        guard let conversation = selectedConversation,
+              let lastAssistant = conversation.messages
+            .filter({ $0.role == .assistant })
+            .sorted(by: { $0.createdAt < $1.createdAt })
+            .last,
+              !chatPanelState.liveToolActivities.isEmpty else { return }
+        chatPanelState.finalizeToolTrace(
+            for: lastAssistant.id,
+            message: lastAssistant,
+            context: modelContext
+        )
     }
 
     private func userBubble(_ message: ChatMessage) -> some View {
         Text(message.content)
-            .font(CFTheme.body())
+            .font(CFTheme.chatBody())
             .foregroundStyle(CFTheme.textPrimary)
+            .lineSpacing(2)
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(CFTheme.surfaceElevated.opacity(0.55))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(CFTheme.textTertiary.opacity(0.16), lineWidth: 1)
-            )
+            .cfChatUserBubbleGlass()
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
     private func assistantBubble(_ message: ChatMessage) -> some View {
         let isStreaming = isSending && message.role == .assistant && message.id == sortedMessages.last?.id
-        let alreadyPlayed = chatPanelState.typedMessageIDs.contains(message.id)
-        let useTypewriter = typewriterMessageID == message.id && !isStreaming && !alreadyPlayed
+        let shouldSettleReveal = pendingSettleMessageID == message.id
+            && !settledRevealMessageIDs.contains(message.id)
 
         Group {
             if isStreaming, message.content.isEmpty {
                 CFThinkingDots()
-            } else if useTypewriter {
+            } else if isStreaming {
                 CFTypewriter(
                     text: message.content,
                     markdown: true,
+                    markdownCompact: true,
                     animated: true,
+                    streaming: true,
                     onProgress: { _ in
                         typewriterScrollTick += 1
-                    },
-                    onComplete: {
-                        chatPanelState.typedMessageIDs.insert(message.id)
-                        if typewriterMessageID == message.id {
-                            typewriterMessageID = nil
-                        }
                     }
                 )
-                .font(CFTheme.body())
+                .font(CFTheme.chatBody())
                 .foregroundStyle(CFTheme.textPrimary)
-                .lineSpacing(4)
+                .lineSpacing(2)
             } else {
-                CFMarkdownText(text: message.content)
+                CFMarkdownText(text: message.content, compact: true, lineSpacing: 2)
+                    .foregroundStyle(CFTheme.textPrimary)
+                    .cfStreamSettleReveal(isActive: shouldSettleReveal) {
+                        settledRevealMessageIDs.insert(message.id)
+                        if pendingSettleMessageID == message.id {
+                            pendingSettleMessageID = nil
+                        }
+                    }
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 10)
         .padding(.vertical, 4)
+    }
+
+    private func finishSending(for conversation: ChatConversation) {
+        if let assistantID = conversation.messages
+            .sorted(by: { $0.createdAt < $1.createdAt })
+            .last(where: { $0.role == .assistant })?
+            .id {
+            pendingSettleMessageID = assistantID
+        }
+        withAnimation(CFMotion.gentle) {
+            isSending = false
+        }
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -430,28 +459,16 @@ struct AIChatSidePanel: View {
         )
     }
 
-    private func toolStatusBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text(message)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.45))
-        )
-    }
-
     private func writeConfirmationCard(_ pending: AIPendingWriteAction) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                CFIconBadge(symbolName: "hand.raised.fill", tint: CFTheme.warning, size: 28)
+                CFIconBadge(
+                    symbolName: AIToolDisplayName.symbol(for: pending.toolName),
+                    tint: CFTheme.warning,
+                    size: 28
+                )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(AIAssistantIdentity.name) quer fazer uma ação")
+                    Text(AIToolDisplayName.confirmationTitle(for: pending.toolName))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CFTheme.textPrimary)
                     Text(pending.summary)
@@ -462,11 +479,10 @@ struct AIChatSidePanel: View {
 
             HStack(spacing: 10) {
                 CFPillButton(title: "Cancelar", style: .ghost) {
-                    chatPanelState.pendingWrite = nil
-                    chatPanelState.agentMessages = []
+                    cancelPendingWrite(pending)
                 }
                 CFPillButton(title: "Confirmar", style: .primary) {
-                    Task { await confirmPendingWrite(pending) }
+                    beginSend { await confirmPendingWrite(pending) }
                 }
             }
         }
@@ -486,65 +502,118 @@ struct AIChatSidePanel: View {
 
     private var inputBar: some View {
         VStack(spacing: 0) {
-            Divider().opacity(0.5)
+            if presentation != .inlineColumn {
+                CFGlassPanelDivider()
+            }
 
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 TextField("Converse com \(AIAssistantIdentity.name)…", text: $chatPanelState.draft, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(CFTheme.body())
+                    .font(CFTheme.chatBody())
                     .lineLimit(1...5)
                     .focused($isInputFocused)
                     .onKeyPress(.return, phases: .down) { press in
-                        guard !press.modifiers.contains(.shift) else { return .ignored }
-                        Task { await send() }
+                        if press.modifiers.contains(.shift) {
+                            Task { @MainActor in
+                                chatPanelState.draft.append("\n")
+                            }
+                            return .handled
+                        }
+                        Task { @MainActor in
+                            beginSend { await send() }
+                        }
                         return .handled
                     }
                     .submitLabel(.send)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(CFTheme.surfaceElevated.opacity(0.45))
-                    )
-                    .cfAIGlow(active: isInputFocused || isSending, cornerRadius: 14, lineWidth: isInputFocused || isSending ? 1.4 : 0.8)
+                    .cfChatInputFieldGlass()
                     .animation(reduceMotion ? nil : CFMotion.snappy, value: isInputFocused)
 
                 sendButton
+                    .frame(width: Self.sendButtonSize, height: Self.sendButtonSize)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 14)
         }
-        .background(CFTheme.surfacePrimary.opacity(0.9))
+        .background {
+            if presentation != .inlineColumn {
+                CFTheme.surfacePrimary.opacity(0.96)
+            }
+        }
     }
 
     private var sendButton: some View {
-        let canSend = !chatPanelState.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+        let hasDraft = !chatPanelState.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         return Button {
-            Task { await send() }
+            if isSending {
+                stopSending()
+            } else {
+                beginSend { await send() }
+            }
         } label: {
-            Image(systemName: isSending ? "ellipsis" : "arrow.up")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(canSend ? .white : CFTheme.textTertiary)
-                .frame(width: 38, height: 38)
-                .background(
-                    Circle()
-                        .fill(
-                            canSend
-                                ? AnyShapeStyle(LinearGradient(
-                                    colors: [CFTheme.accent, CFTheme.accent.opacity(0.8)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ))
-                                : AnyShapeStyle(CFTheme.textTertiary.opacity(0.15))
-                        )
-                )
-                .scaleEffect(canSend ? 1 : 0.94)
-                .animation(reduceMotion ? nil : CFMotion.snappy, value: canSend)
+            ZStack {
+                Circle()
+                    .fill(sendButtonBackground(isSending: isSending, hasDraft: hasDraft))
+
+                Image(systemName: isSending ? "stop.fill" : "arrow.up")
+                    .font(.system(size: isSending ? 10 : 12, weight: .bold))
+                    .foregroundStyle(sendButtonForeground(isSending: isSending, hasDraft: hasDraft))
+            }
+            .frame(width: Self.sendButtonSize, height: Self.sendButtonSize)
+            .opacity(isSending && stopButtonPulse ? 0.82 : 1)
+            .animation(reduceMotion ? nil : CFMotion.snappy, value: isSending)
+            .animation(reduceMotion ? nil : CFMotion.snappy, value: hasDraft)
         }
         .buttonStyle(.plain)
-        .disabled(!canSend)
-        .help("Enviar")
+        .disabled(!isSending && !hasDraft)
+        .help(isSending ? "Interromper resposta" : "Enviar")
+        .onChange(of: isSending) { _, sending in
+            guard sending, !reduceMotion else {
+                stopButtonPulse = false
+                return
+            }
+            stopButtonPulse = false
+            withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
+                stopButtonPulse = true
+            }
+        }
+    }
+
+    private func sendButtonForeground(isSending: Bool, hasDraft: Bool) -> Color {
+        if isSending { return .white }
+        return hasDraft ? .white : CFTheme.textTertiary
+    }
+
+    private func sendButtonBackground(isSending: Bool, hasDraft: Bool) -> AnyShapeStyle {
+        if isSending {
+            return AnyShapeStyle(LinearGradient(
+                colors: [CFTheme.danger, CFTheme.danger.opacity(0.82)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        }
+        if hasDraft {
+            return AnyShapeStyle(LinearGradient(
+                colors: [CFTheme.accent, CFTheme.accent.opacity(0.8)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        }
+        return AnyShapeStyle(CFTheme.textTertiary.opacity(0.15))
+    }
+
+    private func beginSend(_ operation: @escaping @MainActor () async -> Void) {
+        sendTask?.cancel()
+        sendTask = Task {
+            await operation()
+            sendTask = nil
+        }
+    }
+
+    private func stopSending() {
+        sendTask?.cancel()
+        sendTask = nil
     }
 
     private var setupCTA: some View {
@@ -552,10 +621,10 @@ struct AIChatSidePanel: View {
             Spacer()
             CFIconBadge(symbolName: "sparkles", tint: CFTheme.textTertiary, size: 44)
             Text("Configure um provedor de IA")
-                .font(.headline)
+                .font(CFTheme.chatHeadline())
                 .foregroundStyle(CFTheme.textPrimary)
             Text("Vá em Inteligência nas configurações para conversar com \(AIAssistantIdentity.name).")
-                .font(.callout)
+                .font(CFTheme.chatBody())
                 .foregroundStyle(CFTheme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -565,6 +634,21 @@ struct AIChatSidePanel: View {
 
     // MARK: - Actions
 
+    private func resetConversationPresentationState() {
+        pendingSettleMessageID = nil
+        settledRevealMessageIDs = []
+    }
+
+    private func reconcileSelectedConversation() {
+        guard let currentID = chatPanelState.selectedConversationID else {
+            chatPanelState.selectedConversationID = conversations.first?.id
+            return
+        }
+        if !conversations.contains(where: { $0.id == currentID }) {
+            chatPanelState.selectedConversationID = conversations.first?.id
+        }
+    }
+
     private func createConversation() {
         let conversation = chatService.createConversation(in: modelContext)
         withAnimation(CFMotion.snappy) {
@@ -573,6 +657,14 @@ struct AIChatSidePanel: View {
     }
 
     private func send() async {
+        let text = chatPanelState.draft
+        chatPanelState.draft = ""
+        await send(text: text)
+    }
+
+    private func send(text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         guard aiService.configuration.isReady else { return }
         var conversation = selectedConversation
         if conversation == nil {
@@ -581,15 +673,15 @@ struct AIChatSidePanel: View {
         }
         guard let conversation else { return }
 
-        isSending = true
+        withAnimation(CFMotion.snappy) {
+            isSending = true
+        }
         errorMessage = nil
-        typewriterMessageID = nil
-        let text = chatPanelState.draft
-        chatPanelState.draft = ""
+        chatPanelState.beginToolTrace()
 
         do {
             let result = try await chatService.sendMessage(
-                text,
+                trimmed,
                 in: conversation,
                 transactions: transactions,
                 accounts: accounts,
@@ -604,32 +696,80 @@ struct AIChatSidePanel: View {
                 wishlistInsightMonthKey: chatPanelState.wishlistInsightMonthKey,
                 context: modelContext,
                 onStatus: { update in
-                    if update.isExecutingTools, let toolName = update.toolName {
-                        chatPanelState.toolStatusMessage = toolStatusLabel(for: toolName)
-                    } else {
-                        chatPanelState.toolStatusMessage = nil
-                    }
+                    chatPanelState.handleAgentStatus(
+                        update,
+                        treatWriteToolsAsProposals: aiService.activeProviderUsesExternalMCPTools
+                    )
                 },
                 onPartialContent: nil
             )
-            chatPanelState.toolStatusMessage = nil
             chatPanelState.agentMessages = result.agentMessages
-            chatPanelState.pendingWrite = result.pendingWrite
-            if let assistantID = result.assistantMessageID {
-                typewriterMessageID = assistantID
+            chatPanelState.pendingWrite = result.pendingWrite ?? MCPWriteProposalStore.shared.pendingWrite
+            if let assistantID = result.assistantMessageID,
+               let assistantMessage = conversation.messages.first(where: { $0.id == assistantID }) {
+                chatPanelState.finalizeToolTrace(
+                    for: assistantID,
+                    message: assistantMessage,
+                    context: modelContext
+                )
+            } else if result.pendingWrite == nil, MCPWriteProposalStore.shared.pendingWrite == nil {
+                chatPanelState.beginToolTrace()
             }
+        } catch is CancellationError {
+            handleSendCancellation(conversation: conversation)
         } catch {
-            errorMessage = error.localizedDescription
-            chatPanelState.toolStatusMessage = nil
+            if Task.isCancelled {
+                handleSendCancellation(conversation: conversation)
+            } else {
+                errorMessage = error.localizedDescription
+                chatPanelState.beginToolTrace()
+            }
         }
-        isSending = false
+        finishSending(for: conversation)
+    }
+
+    private func handleSendCancellation(conversation: ChatConversation) {
+        errorMessage = nil
+        if let assistant = conversation.messages
+            .sorted(by: { $0.createdAt < $1.createdAt })
+            .last(where: { $0.role == .assistant }) {
+            let trimmed = assistant.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                conversation.messages.removeAll { $0.id == assistant.id }
+                modelContext.delete(assistant)
+                chatPanelState.beginToolTrace()
+            } else {
+                chatPanelState.finalizeToolTrace(
+                    for: assistant.id,
+                    message: assistant,
+                    context: modelContext
+                )
+            }
+        } else {
+            chatPanelState.beginToolTrace()
+        }
+        conversation.updatedAt = .now
+        try? modelContext.save()
     }
 
     private func confirmPendingWrite(_ pending: AIPendingWriteAction) async {
+        if pending.source == .mcp {
+            await confirmMCPPendingWrite(pending)
+            return
+        }
+
         guard let conversation = selectedConversation else { return }
-        isSending = true
+        withAnimation(CFMotion.snappy) {
+            isSending = true
+        }
         errorMessage = nil
+        chatPanelState.markWriteProposalConfirmed(
+            callID: pending.toolCallID,
+            toolName: pending.toolName
+        )
+        finalizeWriteProposalTrace()
         chatPanelState.pendingWrite = nil
+        chatPanelState.beginToolTrace()
 
         do {
             let result = try await chatService.confirmPendingWrite(
@@ -649,49 +789,77 @@ struct AIChatSidePanel: View {
                 wishlistInsightMonthKey: chatPanelState.wishlistInsightMonthKey,
                 context: modelContext,
                 onStatus: { update in
-                    if update.isExecutingTools, let toolName = update.toolName {
-                        chatPanelState.toolStatusMessage = toolStatusLabel(for: toolName)
-                    } else {
-                        chatPanelState.toolStatusMessage = nil
-                    }
+                    chatPanelState.handleAgentStatus(
+                        update,
+                        treatWriteToolsAsProposals: aiService.activeProviderUsesExternalMCPTools
+                    )
                 },
                 onPartialContent: nil
             )
-            chatPanelState.toolStatusMessage = nil
             chatPanelState.agentMessages = result.agentMessages
-            chatPanelState.pendingWrite = result.pendingWrite
-            if let assistantID = result.assistantMessageID {
-                typewriterMessageID = assistantID
+            chatPanelState.pendingWrite = result.pendingWrite ?? MCPWriteProposalStore.shared.pendingWrite
+            AIWriteActionLogger.log(pending, confirmed: true, in: modelContext)
+            if let assistantID = result.assistantMessageID,
+               let assistantMessage = conversation.messages.first(where: { $0.id == assistantID }) {
+                chatPanelState.finalizeToolTrace(
+                    for: assistantID,
+                    message: assistantMessage,
+                    context: modelContext
+                )
+            } else {
+                chatPanelState.beginToolTrace()
+            }
+        } catch is CancellationError {
+            handleSendCancellation(conversation: conversation)
+        } catch {
+            if Task.isCancelled {
+                handleSendCancellation(conversation: conversation)
+            } else {
+                errorMessage = error.localizedDescription
+                chatPanelState.beginToolTrace()
+            }
+        }
+        finishSending(for: conversation)
+    }
+
+    private func confirmMCPPendingWrite(_ pending: AIPendingWriteAction) async {
+        errorMessage = nil
+        chatPanelState.pendingWrite = nil
+
+        do {
+            try MCPWriteProposalService.apply(pending, container: modelContext.container)
+            AIWriteActionLogger.log(pending, confirmed: true, in: modelContext)
+            chatPanelState.markWriteProposalConfirmed(
+                callID: pending.toolCallID,
+                toolName: pending.toolName
+            )
+            finalizeWriteProposalTrace()
+
+            if aiService.activeProviderUsesExternalMCPTools {
+                await send(text: ChatPrompts.writeConfirmationContinuation(summary: pending.summary))
             }
         } catch {
             errorMessage = error.localizedDescription
+            chatPanelState.pendingWrite = pending
         }
-        isSending = false
     }
 
-    private func toolStatusLabel(for toolName: String) -> String {
-        switch toolName {
-        case let name where name.hasPrefix("get_goal") || name == "list_goals":
-            return "Consultando suas metas…"
-        case "get_wishlist_insight":
-            return "Consultando sugestão da lista de desejos…"
-        case let name where name.contains("wishlist"):
-            return "Consultando lista de desejos…"
-        case let name where name.contains("bill"):
-            return "Consultando contas a pagar…"
-        case let name where name.contains("receivable"):
-            return "Consultando contas a receber…"
-        case let name where name.contains("transaction"):
-            return "Consultando lançamentos…"
-        case "get_patrimony", "list_accounts":
-            return "Consultando patrimônio…"
-        case "get_dashboard_insight":
-            return "Consultando resumo da Gio…"
-        case let name where name.contains("month"):
-            return "Consultando o mês…"
-        default:
-            return "Consultando seus dados…"
+    private func cancelPendingWrite(_ pending: AIPendingWriteAction) {
+        AIWriteActionLogger.log(pending, confirmed: false, in: modelContext)
+        chatPanelState.markWriteProposalCancelled(
+            callID: pending.toolCallID,
+            toolName: pending.toolName
+        )
+        finalizeWriteProposalTrace()
+        chatPanelState.pendingWrite = nil
+
+        if pending.source == .mcp {
+            MCPWriteProposalService.markCancelled(pending.id, container: modelContext.container)
+            return
         }
+
+        chatPanelState.agentMessages = []
+        chatPanelState.beginToolTrace()
     }
 
     private func handleInsightLaunchIfNeeded() async {

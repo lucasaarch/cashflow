@@ -9,7 +9,6 @@ enum TransactionListMetrics {
 struct TransactionRow: View {
     let transaction: Transaction
 
-    @EnvironmentObject private var privacy: PrivacyMode
 
     var body: some View {
         HStack(spacing: 14) {
@@ -159,7 +158,7 @@ struct TransactionRow: View {
 
     private var formattedAmount: String {
         let prefix = transaction.kind == .expense ? "−" : "+"
-        return "\(prefix)\(transaction.amount.brl(masked: privacy.valuesHidden))"
+        return "\(prefix)\(transaction.amount.brl)"
     }
 
     private var amountColor: Color {

@@ -53,6 +53,12 @@ enum BillNotifications {
             .removePendingNotificationRequests(withIdentifiers: [identifier(for: bill)])
     }
 
+    static func resync(pending bills: [Bill]) {
+        for bill in bills where bill.isPending {
+            schedule(for: bill)
+        }
+    }
+
     private static func identifier(for bill: Bill) -> String {
         "bill-due-\(bill.id.uuidString)"
     }

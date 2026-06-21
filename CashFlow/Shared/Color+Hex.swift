@@ -33,7 +33,10 @@ extension Color {
 
     var hexString: String {
 #if os(macOS)
-        let resolved = NSColor(self).usingColorSpace(.sRGB) ?? .gray
+        let nsColor = NSColor(self)
+        guard let resolved = nsColor.usingColorSpace(.sRGB) else {
+            return "#808080"
+        }
         let r = Int(round(resolved.redComponent * 255))
         let g = Int(round(resolved.greenComponent * 255))
         let b = Int(round(resolved.blueComponent * 255))

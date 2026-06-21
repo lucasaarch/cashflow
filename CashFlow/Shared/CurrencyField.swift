@@ -28,13 +28,16 @@ struct CurrencyField: View {
                 }
             }
             .onChange(of: rawText) { _, newValue in
-                amount = parse(newValue)
+                let digitsOnly = newValue.filter(\.isNumber)
+                if digitsOnly != newValue {
+                    rawText = digitsOnly
+                }
+                amount = parse(digitsOnly)
             }
     }
 
-    private func parse(_ text: String) -> Decimal {
-        let digitsOnly = text.filter { $0.isNumber }
-        guard let cents = Int(digitsOnly) else { return 0 }
+    private func parse(_ digitsOnly: String) -> Decimal {
+        guard let cents = Int(digitsOnly.isEmpty ? "0" : digitsOnly) else { return 0 }
         return Decimal(cents) / 100
     }
 

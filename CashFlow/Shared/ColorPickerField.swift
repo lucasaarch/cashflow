@@ -26,15 +26,28 @@ enum AccountColorPalette {
         AccountColorOption(id: "#78716C", name: "Pedra"),
         AccountColorOption(id: "#A16207", name: "Ouro"),
     ]
+
+    static func normalizedHex(_ hex: String) -> String {
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withHash = trimmed.hasPrefix("#") ? trimmed : "#\(trimmed)"
+        return withHash.uppercased()
+    }
+
+    static func option(matchingHex hex: String) -> AccountColorOption? {
+        let normalized = normalizedHex(hex)
+        return all.first { normalizedHex($0.id) == normalized }
+    }
 }
 
 struct ColorPickerField: View {
-    @Binding var color: Color
+    @Binding var colorHex: String
 
     @State private var showingPicker = false
 
+    private var color: Color { Color(hex: colorHex) }
+
     private var selectedOption: AccountColorOption? {
-        AccountColorPalette.all.first { $0.color.matchesHex(color) }
+        AccountColorPalette.option(matchingHex: colorHex)
     }
 
     var body: some View {
@@ -53,7 +66,7 @@ struct ColorPickerField: View {
         }
         .buttonStyle(.plain)
         .cfAdaptivePicker(isPresented: $showingPicker, arrowEdge: .top, sheetTitle: "Cor da conta") {
-            ColorPickerGrid(color: $color, dismiss: { showingPicker = false })
+            ColorPickerGrid(colorHex: $colorHex, dismiss: { showingPicker = false })
         }
     }
 
@@ -69,7 +82,7 @@ struct ColorPickerField: View {
 }
 
 private struct ColorPickerGrid: View {
-    @Binding var color: Color
+    @Binding var colorHex: String
     let dismiss: () -> Void
 
     private let columns = Array(repeating: GridItem(.fixed(36), spacing: 10), count: 4)
@@ -92,10 +105,11 @@ private struct ColorPickerGrid: View {
     }
 
     private func colorCell(_ option: AccountColorOption) -> some View {
-        let isSelected = option.color.matchesHex(color)
+        let isSelected = AccountColorPalette.normalizedHex(option.id)
+            == AccountColorPalette.normalizedHex(colorHex)
 
         return Button {
-            color = option.color
+            colorHex = option.id
             dismiss()
         } label: {
             Circle()
@@ -118,11 +132,5 @@ private struct ColorPickerGrid: View {
         }
         .buttonStyle(.plain)
         .help(option.name)
-    }
-}
-
-private extension Color {
-    func matchesHex(_ other: Color) -> Bool {
-        hexString.uppercased() == other.hexString.uppercased()
     }
 }

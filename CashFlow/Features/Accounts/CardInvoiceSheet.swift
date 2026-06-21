@@ -3,7 +3,6 @@ import SwiftData
 
 struct CardInvoiceSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var privacy: PrivacyMode
     @Query private var transactions: [Transaction]
 
     let account: Account
@@ -33,8 +32,7 @@ struct CardInvoiceSheet: View {
             onSave: { showingPayment = true }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
         .sheet(isPresented: $showingPayment) {
             PayInvoiceSheet(card: account, maxAmount: statement.totalDebt)
         }
@@ -178,11 +176,11 @@ struct CardInvoiceSheet: View {
     private func lineAmount(_ item: CreditCardStatementLine) -> String {
         switch item {
         case .openingBalance(let amount):
-            return amount.brl(masked: privacy.valuesHidden)
+            return amount.brl
         case .expense(let transaction):
-            return transaction.amount.brl(masked: privacy.valuesHidden)
+            return transaction.amount.brl
         case .payment(let transaction):
-            return "−\(transaction.amount.brl(masked: privacy.valuesHidden))"
+            return "−\(transaction.amount.brl)"
         }
     }
 
@@ -197,14 +195,14 @@ struct CardInvoiceSheet: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Spacer()
-            CFPillButton(title: "Fechar", style: .ghost) { dismiss() }
+            Spacer(minLength: 0)
+            Button("Fechar") { dismiss() }
+                .cfGlassSecondaryButton()
                 .keyboardShortcut(.cancelAction)
             if statement.totalDebt > 0 {
-                CFPillButton(title: "Pagar fatura", style: .primary) {
-                    showingPayment = true
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Pagar fatura") { showingPayment = true }
+                    .cfGlassProminentButton()
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(.horizontal, 16)

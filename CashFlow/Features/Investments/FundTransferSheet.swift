@@ -54,20 +54,6 @@ struct FundTransferSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CFAmountHeader(
-                title: direction == .deposit ? "Valor do aporte" : "Valor do resgate",
-                amount: $amount,
-                amountColor: CFTheme.accent
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 8)
-
-            directionPicker
-                .padding(.horizontal, 20)
-                .padding(.bottom, 14)
-
-            Divider()
             formContent
             Divider()
             footer.cfAdaptiveSheetFooterVisible()
@@ -81,8 +67,7 @@ struct FundTransferSheet: View {
             onSave: { save(); dismiss() }
         )
         .cfAdaptiveSheetDetents()
-        .cfSheetBackground()
-        .tint(CFTheme.accent)
+        .cfGlassSheetChrome()
         .onAppear(perform: prefillDefaults)
     }
 
@@ -97,47 +82,54 @@ struct FundTransferSheet: View {
 
     private var formContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                section(title: direction == .deposit ? "Origem" : "Destino") {
-                    labeledRow("Conta bancária") {
-                        bankPicker
-                    }
-                }
+            GlassEffectContainer(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
+                    CFGlassSheetAmountHeader(
+                        title: direction == .deposit ? "Valor do aporte" : "Valor do resgate",
+                        amount: $amount,
+                        amountColor: CFTheme.accent
+                    )
 
-                section(title: direction == .deposit ? "Destino" : "Origem") {
-                    labeledRow("Fundo") {
-                        fundPicker
-                    }
-                }
+                    directionPicker
 
-                section(title: "Detalhes") {
-                    labeledRow("Data") {
-                        DateField(date: $occurredOn)
+                    CFGlassFormPanel(title: direction == .deposit ? "Origem" : "Destino") {
+                        CFGlassLabeledField(label: "Conta bancária") { bankPicker }
                     }
-                    if isPlanned {
-                        Text("Lançamento previsto — será contabilizado quando a data chegar.")
-                            .font(CFTheme.caption())
-                            .foregroundStyle(CFTheme.warning)
-                            .padding(.horizontal, 4)
-                    }
-                    labeledRow("Nota") {
-                        TextField("Opcional", text: $note)
-                            .textFieldStyle(.plain)
-                            .font(CFTheme.body())
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
 
-                Text(summary)
-                    .font(CFTheme.caption())
-                    .foregroundStyle(CFTheme.textSecondary)
+                    CFGlassFormPanel(title: direction == .deposit ? "Destino" : "Origem") {
+                        CFGlassLabeledField(label: "Fundo") { fundPicker }
+                    }
+
+                    CFGlassFormPanel(title: "Detalhes") {
+                        VStack(spacing: 0) {
+                            CFGlassLabeledField(label: "Data") {
+                                DateField(date: $occurredOn)
+                            }
+                            if isPlanned {
+                                Text("Lançamento previsto — será contabilizado quando a data chegar.")
+                                    .font(.callout)
+                                    .foregroundStyle(CFTheme.warning)
+                                    .padding(.horizontal, CFGlassMetrics.rowHorizontalPadding)
+                                    .padding(.bottom, CFGlassMetrics.rowVerticalPadding)
+                            }
+                            CFGlassPanelDivider()
+                            CFGlassLabeledField(label: "Nota") {
+                                TextField("Opcional", text: $note)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                    }
+
+                    Text(summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
+                .padding(20)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
-            .cfScrollContent()
         }
-        .cfScrollChrome()
+        .scrollIndicators(.never)
     }
 
     @ViewBuilder
@@ -172,47 +164,13 @@ struct FundTransferSheet: View {
         )
     }
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(CFTheme.caption())
-                .foregroundStyle(CFTheme.textSecondary)
-                .textCase(.uppercase)
-            content()
-        }
-    }
-
-    private func labeledRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(CFTheme.body())
-                .foregroundStyle(CFTheme.textSecondary)
-            Spacer(minLength: 8)
-            content()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(CFTheme.surfaceElevated.opacity(0.38))
-        )
-    }
-
     private var footer: some View {
-        HStack(spacing: 10) {
-            Spacer()
-            CFPillButton(title: "Cancelar", style: .ghost) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            CFPillButton(title: "Confirmar", style: .primary) {
-                save()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .opacity(isValid ? 1 : 0.5)
-            .allowsHitTesting(isValid)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        CFGlassSheetFooter(
+            confirmTitle: "Confirmar",
+            confirmDisabled: !isValid,
+            onCancel: { dismiss() },
+            onConfirm: { save(); dismiss() }
+        )
     }
 
     private func prefillDefaults() {
