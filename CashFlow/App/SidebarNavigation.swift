@@ -90,13 +90,9 @@ struct SidebarDetailView: View {
 
 struct AIChatToolbarButton: View {
     @EnvironmentObject private var chatPanelState: AIChatPanelState
-    @EnvironmentObject private var spotlightState: SpotlightPresentationState
 
     var body: some View {
         Button {
-            if !chatPanelState.isOpen {
-                spotlightState.close()
-            }
             chatPanelState.toggle()
         } label: {
             Image(systemName: AIAssistantIdentity.toolbarSymbolName)
@@ -107,14 +103,10 @@ struct AIChatToolbarButton: View {
 }
 
 struct SpotlightToolbarButton: View {
-    @EnvironmentObject private var chatPanelState: AIChatPanelState
     @EnvironmentObject private var spotlightState: SpotlightPresentationState
 
     var body: some View {
         Button {
-            if !spotlightState.isPresented {
-                chatPanelState.close()
-            }
             spotlightState.toggle()
         } label: {
             Image(systemName: "magnifyingglass")
@@ -128,7 +120,6 @@ struct SpotlightToolbarButton: View {
 struct AIChatPresentationModifier: ViewModifier {
     @EnvironmentObject private var aiService: AIService
     @EnvironmentObject private var chatPanelState: AIChatPanelState
-    @EnvironmentObject private var spotlightState: SpotlightPresentationState
     @Environment(\.cfLayoutMode) private var layoutMode
     @State private var detailToolbarAdd: DetailToolbarAddAction?
     @State private var liveResizeWidth: CGFloat?

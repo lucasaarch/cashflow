@@ -65,17 +65,11 @@ struct CashFlowApp: App {
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("Conversar com \(AIAssistantIdentity.name)…") {
-                    if !chatPanelState.isOpen {
-                        spotlightState.close()
-                    }
                     chatPanelState.toggle()
                 }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
 
                 Button("Buscar em tudo…") {
-                    if !spotlightState.isPresented {
-                        chatPanelState.close()
-                    }
                     spotlightState.toggle()
                 }
                 .keyboardShortcut("k", modifiers: .command)
